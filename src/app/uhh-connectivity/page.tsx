@@ -6,9 +6,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Network, Loader2, CheckCircle, XCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { addLog } from "@/lib/app-logger"; // Import the logger
 
 interface UhhAuthResponseResult {
   uid: number;
@@ -18,7 +18,6 @@ interface UhhAuthResponseResult {
   partner_id?: number;
   company_id?: number;
   db?: string;
-  // session_id might not be in the body, will be extracted from headers
   session_id?: string; 
 }
 
@@ -26,6 +25,8 @@ interface UhhAuthResponseErrorData {
   name?: string;
   debug?: string;
   message?: string;
+  arguments?: string[]; // Odoo often returns this
+  exception_type?: string; // And this
 }
 interface UhhAuthResponseError {
     code: number;
@@ -51,7 +52,7 @@ interface ProxyErrorResponse {
 interface TestConnectionResult {
   success: boolean;
   message: string;
-  data?: UhhAuthResponseResult; // Odoo's JSON 'result' part
+  data?: UhhAuthResponseResult; 
   debugHeaders?: Record<string, string> | null;
   sessionIdFromHeader?: string | null;
 }
@@ -68,12 +69,25 @@ async function testUhhConnection(
 
   const odooPayload = {
     jsonrpc: "2.0",
+    method: "call", // Common for Odoo JSON-RPC
     params: {
-      login: username,
-      password: password,
-      db: dbName,
+      service: "common", // For older Odoo versions, auth might be under 'common' service
+      method: "login",   // or 'authenticate' depending on version
+      args: [dbName, username, password, {}], // args for login: db, login, password, env
     },
   };
+  
+  // Alternative payload structure if the above doesn't match your Odoo version's expectations
+  // const odooPayload = {
+  //   jsonrpc: "2.0",
+  //   params: { // Directly under params for some /web/session/authenticate calls
+  //     login: username,
+  //     password: password,
+  //     db: dbName,
+  //   },
+  // };
+
+  addLog("UHH Connectivity", `Attempting authentication to ${odooFullAuthUrl} for user ${username}, DB: ${dbName}.`, "Info");
 
   let receivedDebugHeaders: Record<string, string> | null = null;
 
@@ -89,64 +103,82 @@ async function testUhhConnection(
       }),
     });
 
-    const responseBody = await proxyResponse.json().catch(() => ({}));
+    const responseBody = await proxyResponse.json().catch(() => ({})); // Graceful JSON parse
     receivedDebugHeaders = responseBody.debug_headers || null;
 
     if (!proxyResponse.ok) {
       const errorData: ProxyErrorResponse = responseBody;
+      const errorMessage = `Proxy or Server error: ${proxyResponse.status} ${proxyResponse.statusText}. ${errorData.message || errorData.details || "An unexpected error occurred with the proxy."}`.trim();
+      addLog("UHH Connectivity", `Proxy/Server Error: ${errorMessage}. Headers: ${JSON.stringify(receivedDebugHeaders)}`, "Error");
       return {
         success: false,
-        message: `Proxy or Server error: ${proxyResponse.status} ${proxyResponse.statusText}. ${errorData.message || errorData.details || "An unexpected error occurred with the proxy."}`.trim(),
+        message: errorMessage,
         debugHeaders: receivedDebugHeaders,
       };
     }
 
     const responseData: UhhAuthResponse = responseBody;
 
+    // Primary: Try to extract session_id from Set-Cookie header
+    let sessionIdFromHeader: string | null = null;
+    const setCookieHeader = receivedDebugHeaders?.['set-cookie'];
+
+    if (setCookieHeader) {
+      // Handle if set-cookie is an array (multiple cookies) or a single string
+      const cookies = Array.isArray(setCookieHeader) ? setCookieHeader : [setCookieHeader];
+      for (const cookieStr of cookies) {
+        const match = cookieStr.match(/session_id=([^;]+)/);
+        if (match && match[1]) {
+          sessionIdFromHeader = match[1];
+          break; // Found session_id, no need to check other cookies
+        }
+      }
+    }
+    
     if (responseData.error) {
+      const errorDetails = responseData.error.data;
+      let odooErrorMessage = responseData.error.message;
+      if (errorDetails?.message) {
+        odooErrorMessage = errorDetails.message;
+      } else if (errorDetails?.arguments && Array.isArray(errorDetails.arguments) && errorDetails.arguments.length > 0) {
+        odooErrorMessage = errorDetails.arguments[0]; // Sometimes the actual message is here
+      }
+      addLog("UHH Connectivity", `Odoo Authentication Error: ${odooErrorMessage}. Code: ${responseData.error.code}, Details: ${JSON.stringify(errorDetails)}`, "Error");
       return {
         success: false,
-        message: `Authentication failed: ${responseData.error.data?.message || responseData.error.message || "Invalid credentials, database name, or server error."}`,
+        message: `Authentication failed: ${odooErrorMessage || "Invalid credentials, database name, or server configuration issue."}`,
         debugHeaders: receivedDebugHeaders,
       };
     }
 
-    // Attempt to extract session_id from Set-Cookie header
-    let sessionIdFromHeader: string | null = null;
-    const setCookieHeader = receivedDebugHeaders?.['set-cookie'];
-    if (setCookieHeader) {
-      const REX = /session_id=([^;]+)/;
-      const match = (typeof setCookieHeader === 'string' ? setCookieHeader : setCookieHeader[0] || '').match(REX); // Handle if set-cookie is an array
-      if (match && match[1]) {
-        sessionIdFromHeader = match[1];
-      }
-    }
 
     if (sessionIdFromHeader) {
       localStorage.setItem("uhh_session_id", sessionIdFromHeader);
-      localStorage.setItem("uhh_user_details", JSON.stringify({
+      const userDetailsToStore = {
         uid: responseData.result?.uid,
         name: responseData.result?.name,
-        username: responseData.result?.username || username, // Fallback to input username
-        db: responseData.result?.db || dbName, // Fallback to input dbName
+        username: responseData.result?.username || username,
+        db: responseData.result?.db || dbName,
         url: uhhBaseUrl,
         isAdmin: responseData.result?.is_admin,
         companyId: responseData.result?.company_id,
         partnerId: responseData.result?.partner_id,
-      }));
+      };
+      localStorage.setItem("uhh_user_details", JSON.stringify(userDetailsToStore));
+      addLog("UHH Connectivity", `Authentication successful via header. Session ID obtained. User: ${userDetailsToStore.name || userDetailsToStore.username}`, "Success");
       return {
         success: true,
         message: "Authentication successful! Session established via header.",
-        data: responseData.result, // Odoo might still send other useful details in result
+        data: responseData.result,
         debugHeaders: receivedDebugHeaders,
         sessionIdFromHeader: sessionIdFromHeader,
       };
     }
 
-    // Fallback to check body if header parsing fails, though primary target is header
-    if (responseData.result && responseData.result.session_id) {
+    // Fallback: Check if session_id is in the body (less common for /web/session/authenticate but good to check)
+    if (responseData.result?.session_id) {
       localStorage.setItem("uhh_session_id", responseData.result.session_id);
-      localStorage.setItem("uhh_user_details", JSON.stringify({
+      const userDetailsToStore = {
         uid: responseData.result.uid,
         name: responseData.result.name,
         username: responseData.result.username,
@@ -155,29 +187,32 @@ async function testUhhConnection(
         isAdmin: responseData.result.is_admin,
         companyId: responseData.result.company_id,
         partnerId: responseData.result.partner_id,
-      }));
+      };
+      localStorage.setItem("uhh_user_details", JSON.stringify(userDetailsToStore));
+      addLog("UHH Connectivity", `Authentication successful via response body. Session ID: ${responseData.result.session_id}. User: ${userDetailsToStore.name || userDetailsToStore.username}`, "Success");
        return {
         success: true,
-        message: "Authentication successful! Session established via body.",
+        message: "Authentication successful! Session established via response body.",
         data: responseData.result,
         debugHeaders: receivedDebugHeaders,
         sessionIdFromHeader: responseData.result.session_id, 
       };
     }
     
-
+    // If neither header nor body provided a session_id, but there was no explicit Odoo error
+    addLog("UHH Connectivity", "Authentication response did not contain an error, but no session_id found in headers or body. Check Odoo server logs and response structure.", "Error");
     return {
       success: false,
-      message: "Authentication failed: Session ID not found in response headers or body. Check Odoo logs.",
+      message: "Authentication Succeeded (no error from Odoo), but Session ID not found in response. Check Odoo logs or configuration.",
       debugHeaders: receivedDebugHeaders,
     };
 
   } catch (error) {
-    console.error("UHH Connection test error (via proxy):", error);
-    let errorMessage = "Connection failed. Please check your network or the UHH URL.";
+    let errorMessage = "Connection failed due to an unexpected client-side error. Please check your network or the UHH URL.";
     if (error instanceof Error) {
-        errorMessage = `Connection error: ${error.message}`;
+        errorMessage = `Client-side connection error: ${error.message}`;
     }
+    addLog("UHH Connectivity", `Critical client-side error during connection test: ${errorMessage}`, "Error");
     return { success: false, message: errorMessage, debugHeaders: receivedDebugHeaders };
   }
 }
@@ -191,9 +226,9 @@ export default function UhhConnectivityPage() {
   const [dbName, setDbName] = React.useState("");
   const [isLoading, setIsLoading] = React.useState(false);
   const [activeSession, setActiveSession] = React.useState<{sessionId: string; user: string; db: string; url: string} | null>(null);
-  // const [debugHeaders, setDebugHeaders] = React.useState<Record<string, string> | null>(null); // Removing debug display
 
   React.useEffect(() => {
+    addLog("UHH Connectivity", "Page loaded. Checking for existing session and user details.", "Debug");
     const storedSessionId = localStorage.getItem("uhh_session_id");
     const storedUserDetailsRaw = localStorage.getItem("uhh_user_details");
 
@@ -211,37 +246,42 @@ export default function UhhConnectivityPage() {
             db: userDetails.db,
             url: userDetails.url,
           });
+           addLog("UHH Connectivity", `Active session found for user ${userDetails.name || userDetails.username}.`, "Info");
         } else {
+            // If userDetails exist but no valid session, clear potentially stale session_id
             localStorage.removeItem("uhh_session_id"); 
             setActiveSession(null);
+            if(storedSessionId) addLog("UHH Connectivity", "Stored user details found, but session ID was missing or incomplete. Cleared stale session.", "Debug");
         }
       } catch (e) {
         console.error("Failed to parse stored user details", e);
+        addLog("UHH Connectivity", `Error parsing stored user details: ${e instanceof Error ? e.message : String(e)}`, "Error");
         localStorage.removeItem("uhh_session_id");
         localStorage.removeItem("uhh_user_details");
         setActiveSession(null);
       }
     } else {
+      // No user details stored, ensure no session ID lingers
       localStorage.removeItem("uhh_session_id"); 
       setActiveSession(null);
+      addLog("UHH Connectivity", "No stored user details or session found.", "Debug");
     }
   }, []);
 
   const canTestConnection = Boolean(uhhUrl && username && password && dbName);
 
   const handleTestConnection = async () => {
-    if (!canTestConnection) return;
+    if (!canTestConnection || isLoading) return; // Added isLoading check here too
     setIsLoading(true);
-    // setDebugHeaders(null); // No longer needed for display
 
     const result = await testUhhConnection(uhhUrl, username, password, dbName);
     setIsLoading(false);
-    // setDebugHeaders(result.debugHeaders || null); // No longer needed for display
 
     toast({
       title: result.success ? "Success" : "Error",
       description: result.message,
       variant: result.success ? "default" : "destructive",
+      duration: result.success ? 5000 : 9000, // Longer duration for errors
     });
 
     if (result.success && result.sessionIdFromHeader) {
@@ -253,17 +293,18 @@ export default function UhhConnectivityPage() {
         });
         setPassword(""); 
     } else if (!result.success) {
-        setActiveSession(null);
-        setPassword(""); 
+        setActiveSession(null); // Clear active session on any failure
+        // Password field is not cleared here to allow user to retry, 
+        // but it is cleared on successful login or logout.
     }
   };
 
   const handleLogout = () => {
+    addLog("UHH Connectivity", `User ${activeSession?.user || 'unknown'} logged out. Session cleared.`, "Info");
     localStorage.removeItem("uhh_session_id");
-    // Keep uhh_user_details so form fields are pre-filled next time.
+    // User details (URL, username, DB name) are kept in localStorage for convenience.
     setActiveSession(null);
     setPassword(""); 
-    // setDebugHeaders(null); // No longer needed for display
     toast({
       title: "Logged Out",
       description: "UHH session has been cleared. Your connection details are remembered for next time (excluding password).",
@@ -326,6 +367,7 @@ export default function UhhConnectivityPage() {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               disabled={isLoading || !!activeSession}
+              autoComplete="username"
             />
           </div>
           <div>
@@ -364,10 +406,7 @@ export default function UhhConnectivityPage() {
             </Button>
             </div>
         )}
-
-        {/* Removed debugHeaders display section */}
       </CardContent>
     </Card>
   );
 }
-
