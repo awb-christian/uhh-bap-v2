@@ -90,13 +90,15 @@ export default function LogsPage() {
     const storedRetention = localStorage.getItem("logRetentionPeriod");
     if (storedRetention && RETENTION_OPTIONS.find(opt => opt.value === storedRetention)) {
       setLogRetentionPeriod(storedRetention);
+    } else {
+      localStorage.setItem("logRetentionPeriod", RETENTION_OPTIONS[1].value); // Save default if not found
     }
+
     const storedLimit = localStorage.getItem("displayLogLimit");
     if (storedLimit && DISPLAY_LIMIT_OPTIONS.find(opt => opt.value === storedLimit)) {
       setDisplayLogLimit(storedLimit);
     } else {
-       // If no stored limit, set to default and save it
-      localStorage.setItem("displayLogLimit", DISPLAY_LIMIT_OPTIONS[1].value);
+      localStorage.setItem("displayLogLimit", DISPLAY_LIMIT_OPTIONS[1].value); // Save default if not found
     }
     loadAndSetLogs();
 
@@ -114,17 +116,23 @@ export default function LogsPage() {
   React.useEffect(() => {
     localStorage.setItem("logRetentionPeriod", logRetentionPeriod);
     // Only log if not the initial default setting or actual change by user interaction
-    if (localStorage.getItem("logRetentionPeriodInitialized")) {
+    if (localStorage.getItem("logRetentionPeriodInitialized") === "true") { // Check if it was *already* initialized
         addLog("LogsPage", `Log retention period set to: ${RETENTION_OPTIONS.find(o => o.value === logRetentionPeriod)?.label || logRetentionPeriod}.`, "Info");
-    } else {
+    } else if (logRetentionPeriod !== RETENTION_OPTIONS[1].value) { // Log if it's not the default and not yet initialized
+        localStorage.setItem("logRetentionPeriodInitialized", "true");
+        addLog("LogsPage", `Log retention period initialized to: ${RETENTION_OPTIONS.find(o => o.value === logRetentionPeriod)?.label || logRetentionPeriod}.`, "Info");
+    } else { // Setting to default for the first time (or it's already default)
         localStorage.setItem("logRetentionPeriodInitialized", "true");
     }
   }, [logRetentionPeriod]);
 
   React.useEffect(() => {
     localStorage.setItem("displayLogLimit", displayLogLimit);
-     if (localStorage.getItem("displayLogLimitInitialized")) {
+     if (localStorage.getItem("displayLogLimitInitialized") === "true") {
         addLog("LogsPage", `Display log limit set to: ${DISPLAY_LIMIT_OPTIONS.find(o => o.value === displayLogLimit)?.label || displayLogLimit}.`, "Info");
+    } else if (displayLogLimit !== DISPLAY_LIMIT_OPTIONS[1].value) {
+        localStorage.setItem("displayLogLimitInitialized", "true");
+        addLog("LogsPage", `Display log limit initialized to: ${DISPLAY_LIMIT_OPTIONS.find(o => o.value === displayLogLimit)?.label || displayLogLimit}.`, "Info");
     } else {
         localStorage.setItem("displayLogLimitInitialized", "true");
     }
@@ -350,5 +358,6 @@ export default function LogsPage() {
 // for interoperability than Unix timestamps (INTEGER) when dealing with timezones,
 // especially if the client and server are in different timezones. SQLite can handle
 // date functions on ISO8601 strings.
+    
 
     
