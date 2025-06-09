@@ -6,12 +6,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ScrollArea } from "@/components/ui/scroll-area"; // Added import
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Network, Loader2, CheckCircle, XCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface UhhAuthResponseResult {
-  session_id: string;
   uid: number;
   is_admin?: boolean;
   name?: string;
@@ -19,6 +18,8 @@ interface UhhAuthResponseResult {
   partner_id?: number;
   company_id?: number;
   db?: string;
+  // session_id might not be in the body, will be extracted from headers
+  session_id?: string; 
 }
 
 interface UhhAuthResponseErrorData {
@@ -38,7 +39,7 @@ interface UhhAuthResponse {
   id?: number | null;
   result?: UhhAuthResponseResult;
   error?: UhhAuthResponseError;
-  debug_headers?: Record<string, string>; // For proxy to pass headers
+  debug_headers?: Record<string, string>; 
 }
 
 interface ProxyErrorResponse {
@@ -47,13 +48,21 @@ interface ProxyErrorResponse {
     debug_headers?: Record<string, string>;
 }
 
+interface TestConnectionResult {
+  success: boolean;
+  message: string;
+  data?: UhhAuthResponseResult; // Odoo's JSON 'result' part
+  debugHeaders?: Record<string, string> | null;
+  sessionIdFromHeader?: string | null;
+}
+
 
 async function testUhhConnection(
   uhhBaseUrl: string,
   username: string,
   password: string,
   dbName: string
-): Promise<{ success: boolean; message: string; data?: UhhAuthResponseResult; debugHeaders?: Record<string, string> | null }> {
+): Promise<TestConnectionResult> {
   const authPath = "/web/session/authenticate";
   const odooFullAuthUrl = `${uhhBaseUrl.replace(/\/$/, "")}${authPath}`;
 
@@ -102,6 +111,39 @@ async function testUhhConnection(
       };
     }
 
+    // Attempt to extract session_id from Set-Cookie header
+    let sessionIdFromHeader: string | null = null;
+    const setCookieHeader = receivedDebugHeaders?.['set-cookie'];
+    if (setCookieHeader) {
+      const REX = /session_id=([^;]+)/;
+      const match = (typeof setCookieHeader === 'string' ? setCookieHeader : setCookieHeader[0] || '').match(REX); // Handle if set-cookie is an array
+      if (match && match[1]) {
+        sessionIdFromHeader = match[1];
+      }
+    }
+
+    if (sessionIdFromHeader) {
+      localStorage.setItem("uhh_session_id", sessionIdFromHeader);
+      localStorage.setItem("uhh_user_details", JSON.stringify({
+        uid: responseData.result?.uid,
+        name: responseData.result?.name,
+        username: responseData.result?.username || username, // Fallback to input username
+        db: responseData.result?.db || dbName, // Fallback to input dbName
+        url: uhhBaseUrl,
+        isAdmin: responseData.result?.is_admin,
+        companyId: responseData.result?.company_id,
+        partnerId: responseData.result?.partner_id,
+      }));
+      return {
+        success: true,
+        message: "Authentication successful! Session established via header.",
+        data: responseData.result, // Odoo might still send other useful details in result
+        debugHeaders: receivedDebugHeaders,
+        sessionIdFromHeader: sessionIdFromHeader,
+      };
+    }
+
+    // Fallback to check body if header parsing fails, though primary target is header
     if (responseData.result && responseData.result.session_id) {
       localStorage.setItem("uhh_session_id", responseData.result.session_id);
       localStorage.setItem("uhh_user_details", JSON.stringify({
@@ -114,17 +156,19 @@ async function testUhhConnection(
         companyId: responseData.result.company_id,
         partnerId: responseData.result.partner_id,
       }));
-      return {
+       return {
         success: true,
-        message: "Authentication successful! Session established.",
+        message: "Authentication successful! Session established via body.",
         data: responseData.result,
         debugHeaders: receivedDebugHeaders,
+        sessionIdFromHeader: responseData.result.session_id, 
       };
     }
+    
 
     return {
       success: false,
-      message: "Authentication failed: Unexpected response format from server (missing session_id in result).",
+      message: "Authentication failed: Session ID not found in response headers or body. Check Odoo logs.",
       debugHeaders: receivedDebugHeaders,
     };
 
@@ -147,7 +191,7 @@ export default function UhhConnectivityPage() {
   const [dbName, setDbName] = React.useState("");
   const [isLoading, setIsLoading] = React.useState(false);
   const [activeSession, setActiveSession] = React.useState<{sessionId: string; user: string; db: string; url: string} | null>(null);
-  const [debugHeaders, setDebugHeaders] = React.useState<Record<string, string> | null>(null);
+  // const [debugHeaders, setDebugHeaders] = React.useState<Record<string, string> | null>(null); // Removing debug display
 
   React.useEffect(() => {
     const storedSessionId = localStorage.getItem("uhh_session_id");
@@ -160,7 +204,7 @@ export default function UhhConnectivityPage() {
         setUsername(userDetails.username || "");
         setDbName(userDetails.db || "");
 
-        if (storedSessionId && userDetails.url && userDetails.username && userDetails.db) {
+        if (storedSessionId && userDetails.url && (userDetails.username || userDetails.name) && userDetails.db) {
           setActiveSession({
             sessionId: storedSessionId,
             user: userDetails.name || userDetails.username || "Unknown User",
@@ -168,7 +212,7 @@ export default function UhhConnectivityPage() {
             url: userDetails.url,
           });
         } else {
-            localStorage.removeItem("uhh_session_id"); // Clear potentially stale session if details are incomplete
+            localStorage.removeItem("uhh_session_id"); 
             setActiveSession(null);
         }
       } catch (e) {
@@ -178,7 +222,7 @@ export default function UhhConnectivityPage() {
         setActiveSession(null);
       }
     } else {
-      localStorage.removeItem("uhh_session_id"); // Also ensure session is cleared if no user details
+      localStorage.removeItem("uhh_session_id"); 
       setActiveSession(null);
     }
   }, []);
@@ -188,11 +232,11 @@ export default function UhhConnectivityPage() {
   const handleTestConnection = async () => {
     if (!canTestConnection) return;
     setIsLoading(true);
-    setDebugHeaders(null); // Clear previous debug headers
+    // setDebugHeaders(null); // No longer needed for display
 
     const result = await testUhhConnection(uhhUrl, username, password, dbName);
     setIsLoading(false);
-    setDebugHeaders(result.debugHeaders || null);
+    // setDebugHeaders(result.debugHeaders || null); // No longer needed for display
 
     toast({
       title: result.success ? "Success" : "Error",
@@ -200,25 +244,26 @@ export default function UhhConnectivityPage() {
       variant: result.success ? "default" : "destructive",
     });
 
-    if (result.success && result.data) {
+    if (result.success && result.sessionIdFromHeader) {
         setActiveSession({
-            sessionId: result.data.session_id,
-            user: result.data.name || result.data.username || username,
-            db: result.data.db || dbName,
+            sessionId: result.sessionIdFromHeader,
+            user: result.data?.name || result.data?.username || username,
+            db: result.data?.db || dbName,
             url: uhhUrl,
         });
-        setPassword("");
+        setPassword(""); 
     } else if (!result.success) {
         setActiveSession(null);
-        setPassword("");
+        setPassword(""); 
     }
   };
 
   const handleLogout = () => {
     localStorage.removeItem("uhh_session_id");
+    // Keep uhh_user_details so form fields are pre-filled next time.
     setActiveSession(null);
-    setPassword("");
-    setDebugHeaders(null); // Clear debug headers on logout
+    setPassword(""); 
+    // setDebugHeaders(null); // No longer needed for display
     toast({
       title: "Logged Out",
       description: "UHH session has been cleared. Your connection details are remembered for next time (excluding password).",
@@ -320,17 +365,9 @@ export default function UhhConnectivityPage() {
             </div>
         )}
 
-        {debugHeaders && (
-          <div className="mt-6 p-4 bg-muted/50 rounded-lg">
-            <h4 className="font-semibold text-lg mb-2">Response Headers (Debug)</h4>
-            <ScrollArea className="h-60 w-full rounded-md border p-2 bg-background">
-              <pre className="text-xs whitespace-pre-wrap break-all">
-                {JSON.stringify(debugHeaders, null, 2)}
-              </pre>
-            </ScrollArea>
-          </div>
-        )}
+        {/* Removed debugHeaders display section */}
       </CardContent>
     </Card>
   );
 }
+
