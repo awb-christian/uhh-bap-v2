@@ -81,6 +81,7 @@ export default function LogsPage() {
   const [selectedLog, setSelectedLog] = React.useState<LogEntry | null>(null);
   const [isModalOpen, setIsModalOpen] = React.useState(false);
   const [isClearLogsDialogOpen, setIsClearLogsDialogOpen] = React.useState(false);
+  const [settingsInitialized, setSettingsInitialized] = React.useState(false);
 
 
   const loadAndSetLogs = React.useCallback(() => {
@@ -95,7 +96,7 @@ export default function LogsPage() {
     if (storedRetention && RETENTION_OPTIONS.find(opt => opt.value === storedRetention)) {
       setLogRetentionPeriod(storedRetention);
     } else {
-      localStorage.setItem("logRetentionPeriod", RETENTION_OPTIONS[1].value); // Persist default if not found
+      localStorage.setItem("logRetentionPeriod", RETENTION_OPTIONS[1].value); 
       setLogRetentionPeriod(RETENTION_OPTIONS[1].value);
     }
 
@@ -103,10 +104,10 @@ export default function LogsPage() {
     if (storedLimit && DISPLAY_LIMIT_OPTIONS.find(opt => opt.value === storedLimit)) {
       setDisplayLogLimit(storedLimit);
     } else {
-      localStorage.setItem("displayLogLimit", DISPLAY_LIMIT_OPTIONS[1].value); // Persist default
+      localStorage.setItem("displayLogLimit", DISPLAY_LIMIT_OPTIONS[1].value); 
       setDisplayLogLimit(DISPLAY_LIMIT_OPTIONS[1].value);
     }
-    
+    setSettingsInitialized(true); 
     loadAndSetLogs();
 
     // Listen for log updates from other parts of the app
@@ -120,21 +121,24 @@ export default function LogsPage() {
   }, [loadAndSetLogs]);
 
   React.useEffect(() => {
+    if (!settingsInitialized) return; 
+    // Only log and apply policy if the value actually changed by user interaction, not initial load
+    // This check is implicit if settingsInitialized is true *after* initial load effect.
     localStorage.setItem("logRetentionPeriod", logRetentionPeriod);
-    // TODO: [Electron Main Process] Trigger actual log retention policy enforcement.
-    // The applyRetentionPolicy function here is a placeholder.
     applyRetentionPolicy(logRetentionPeriod); 
-    // Log the change only if it's not the initial default setting.
-    // Consider a flag to track if settings have been "initialized" to avoid logging on first load.
-  }, [logRetentionPeriod]);
+    // addLog("LogsPage", `Log retention period set to: ${RETENTION_OPTIONS.find(o => o.value === logRetentionPeriod)?.label || logRetentionPeriod}.`, "Info");
+  }, [logRetentionPeriod, settingsInitialized]);
 
   React.useEffect(() => {
+    if (!settingsInitialized) return;
+    // Only log if the value actually changed by user interaction
     localStorage.setItem("displayLogLimit", displayLogLimit);
-  }, [displayLogLimit]);
+    // addLog("LogsPage", `Display log limit set to: ${DISPLAY_LIMIT_OPTIONS.find(o => o.value === displayLogLimit)?.label || displayLogLimit}.`, "Info");
+  }, [displayLogLimit, settingsInitialized]);
 
   const displayedLogs = React.useMemo(() => {
     const limit = parseInt(displayLogLimit, 10);
-    if (isNaN(limit) || displayLogLimit === "all") { // Handles 'all' case
+    if (isNaN(limit) || displayLogLimit === "all") { 
       return logs;
     }
     return logs.slice(0, limit);
@@ -146,7 +150,7 @@ export default function LogsPage() {
   };
 
   const handleClearAllLogs = () => {
-    clearLogs(); // This will trigger 'logsUpdated' event
+    clearLogs(); 
     toast({
       title: "Logs Cleared",
       description: "All activity logs have been deleted.",
@@ -177,7 +181,7 @@ export default function LogsPage() {
         <CardHeader className="border-b">
           <CardTitle className="font-headline text-xl">Log Settings</CardTitle>
           <CardDescription>
-            Configure log retention and display preferences. Actual log deletion based on retention period requires a background process.
+            Configure log retention and display preferences.
           </CardDescription>
         </CardHeader>
         <CardContent className="pt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -205,7 +209,8 @@ export default function LogsPage() {
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              Select how long logs should be kept. Older logs will be periodically deleted by a background process (not yet implemented in UI).
+              {/* TODO: [Electron Main Process] Implement actual log cleanup based on retention period in main process (e.g., for SQLite). */}
+              Select how long logs should be kept. Older logs will be periodically deleted. (Actual deletion requires main process implementation).
             </p>
           </div>
           <div className="space-y-2">
@@ -232,7 +237,7 @@ export default function LogsPage() {
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              Controls the number of recent log entries shown below. Select "All Logs" to show everything (may impact performance with very large log sets).
+              Controls the number of recent log entries shown below. Select "All Logs" to show everything (may impact performance with very large log sets if not using a virtualized list).
             </p>
           </div>
         </CardContent>
@@ -358,4 +363,3 @@ export default function LogsPage() {
 // especially if the client and server are in different timezones. SQLite can handle
 // date functions on ISO8601 strings.
     
-```
