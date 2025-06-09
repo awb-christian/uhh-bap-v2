@@ -3,6 +3,8 @@ import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
+  let odooResponseHeaders: Record<string, string> = {};
+
   try {
     const { targetUrl, payload } = await request.json();
 
@@ -26,11 +28,25 @@ export async function POST(request: NextRequest) {
       // signal: AbortSignal.timeout(15000) // 15 seconds timeout
     });
 
+    // Capture Odoo's response headers
+    odooResponse.headers.forEach((value, key) => {
+      odooResponseHeaders[key] = value;
+    });
+
     // Attempt to parse JSON, but handle cases where Odoo might not send JSON (e.g. 502 Bad Gateway HTML page)
     let responseData;
     const contentType = odooResponse.headers.get("content-type");
+
     if (contentType && contentType.includes("application/json")) {
         responseData = await odooResponse.json();
+        // Add debug_headers to the successfully parsed JSON response
+        if (typeof responseData === 'object' && responseData !== null) {
+            responseData.debug_headers = odooResponseHeaders;
+        } else {
+            // If responseData is not an object (e.g. Odoo returned a string literal "null" as JSON)
+            // Create an object to hold the debug headers
+            responseData = { original_response: responseData, debug_headers: odooResponseHeaders };
+        }
     } else {
         // If not JSON, it's likely an HTML error page from Odoo or an intermediary proxy
         const textResponse = await odooResponse.text();
@@ -39,7 +55,8 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(
             { 
                 error: `Odoo server responded with non-JSON content. Status: ${odooResponse.status} ${odooResponse.statusText}.`,
-                details: textResponse.substring(0, 500) // Send a snippet of the non-JSON response
+                details: textResponse.substring(0, 500), // Send a snippet of the non-JSON response
+                debug_headers: odooResponseHeaders // Also include headers here
             }, 
             { status: odooResponse.status } // Forward Odoo's status
         );
@@ -58,11 +75,23 @@ export async function POST(request: NextRequest) {
         if (error.name === 'AbortError') {
             errorMessage = 'Request to Odoo server timed out.';
         } else if (error.message.includes('ECONNREFUSED')) {
-            errorMessage = `Connection refused by Odoo server at ${JSON.parse(await request.text()).targetUrl}. Ensure the server is running and the URL is correct.`;
+            // Attempt to parse targetUrl from request if available, otherwise use a generic message
+            let reqBody;
+            try {
+                reqBody = await request.clone().json(); // Clone request to read body
+            } catch (parseError) {
+                // Ignore if body can't be parsed or isn't JSON
+            }
+            const targetUrlFromReq = reqBody?.targetUrl;
+            if (targetUrlFromReq) {
+                errorMessage = `Connection refused by Odoo server at ${targetUrlFromReq}. Ensure the server is running and the URL is correct.`;
+            } else {
+                 errorMessage = `Connection refused by Odoo server. Ensure the server is running and the URL is correct.`;
+            }
         }
     }
     
     // It's important to let the client know if the proxy itself failed or failed to reach Odoo
-    return NextResponse.json({ error: 'Proxy request failed', details: errorMessage }, { status: 500 });
+    return NextResponse.json({ error: 'Proxy request failed', details: errorMessage, debug_headers: odooResponseHeaders }, { status: 500 });
   }
 }
