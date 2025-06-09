@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { Link2, FileUp, KeyRound, Loader2, CheckCircle, RefreshCw, Settings2, Calendar as CalendarIcon, Clock } from "lucide-react";
+import { Link2, FileUp, KeyRound, Loader2, CheckCircle, RefreshCw, Settings2, Calendar as CalendarIcon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { addLog } from "@/lib/app-logger";
 import { cn } from "@/lib/utils";
@@ -115,13 +115,12 @@ export default function SecureLinkPage() {
     addLog("SecureLinkPage", `Fetch frequency set to: ${FETCH_FREQUENCY_OPTIONS.find(opt => opt.value === value)?.label}`, "Info");
   };
 
-  const updateFetchUpToDateTime = (date?: Date, hour?: string, minute?: string) => {
+  const updateFetchUpToDateTime = React.useCallback((date?: Date, hour?: string, minute?: string) => {
     const currentDate = date || fetchUpToDate || new Date();
     const currentHour = parseInt(hour || fetchUpToHour, 10);
     const currentMinute = parseInt(minute || fetchUpToMinute, 10);
 
     if (isNaN(currentHour) || isNaN(currentMinute) || currentHour < 0 || currentHour > 23 || currentMinute < 0 || currentMinute > 59) {
-        // Potentially show a toast for invalid time
         return;
     }
     
@@ -132,12 +131,12 @@ export default function SecureLinkPage() {
     
     localStorage.setItem("securelink_fetchUpToDateTime", newDateTime.toISOString());
     addLog("SecureLinkPage", `Fetch up to date/time set to: ${newDateTime.toISOString()}`, "Info");
-  };
+  }, [fetchUpToDate, fetchUpToHour, fetchUpToMinute]);
 
 
   React.useEffect(() => {
       updateFetchUpToDateTime(fetchUpToDate, fetchUpToHour, fetchUpToMinute);
-  }, [fetchUpToDate, fetchUpToHour, fetchUpToMinute]);
+  }, [fetchUpToDate, fetchUpToHour, fetchUpToMinute, updateFetchUpToDateTime]);
 
 
   const handleTestConnection = async () => {
@@ -199,42 +198,44 @@ export default function SecureLinkPage() {
   
   // Placeholder for manual fetch
   const handleManualFetch = async (isScheduled: boolean = false) => {
-    if (!isConnected && !mdbFile) { // Require connection or at least file selection if not connected for manual fetch attempt
-        toast({ title: "Not Connected", description: "Please test the MDB connection first, or ensure an MDB file is selected.", variant: "destructive"});
+    if (!isConnected && !mdbFile && !mdbFileName) { 
+        toast({ title: "Not Connected/No File", description: "Please test the MDB connection first or ensure an MDB file is selected.", variant: "destructive"});
         addLog("SecureLinkPage", "Manual fetch attempted without active connection or MDB file.", "Error");
         return;
     }
     setIsFetchingNow(true);
     const fetchType = isScheduled ? "scheduled" : "manual";
-    addLog("SecureLinkPage", `Initiating ${fetchType} data fetch from AAS (simulated). Fetch up to: ${localStorage.getItem("securelink_fetchUpToDateTime")}`, "Info");
-    setDebugOutput(prev => `${prev}\n\nInitiating ${fetchType} fetch (simulated)...`);
+    const fetchUpTo = localStorage.getItem("securelink_fetchUpToDateTime") || new Date().toISOString();
+    addLog("SecureLinkPage", `Initiating ${fetchType} data fetch from AAS (simulated). Fetch up to: ${fetchUpTo}`, "Info");
+    setDebugOutput(prev => `${prev}\n\nInitiating ${fetchType} fetch (simulated) up to ${format(parseISO(fetchUpTo), "Pp")}. This would involve:
+1. Connecting to ${mdbFileName || mdbFile?.name} (actual path: ${mdbFile?.path || 'not available in browser'}).
+2. Querying 'tmpTRecords' and 'Employee' tables for records where RecordDate <= ${fetchUpTo}.
+3. Transforming data (e.g., UserID to Employee String ID, RecordType to 'check-in'/'check-out').
+4. Calling addAttendanceTransaction() for each valid new record.
+5. Updating 'securelink_lastFetchedTimestamp' to now.
+6. Updating 'securelink_fetchUpToDateTime' to the timestamp of the latest record successfully processed from this batch.
+(Actual implementation requires Electron IPC for file access and database operations)
+`);
     
-    // In a real app, this would call an Electron IPC function:
-    // await window.electronAPI.fetchAASData({ filePath: mdbFile?.path, password, fetchUpTo: localStorage.getItem("securelink_fetchUpToDateTime") });
-    // This function would:
-    // 1. Connect to the MDB file.
-    // 2. Query 'tmpTRecords' (and potentially 'Employee') for records up to 'fetchUpToDateTime'.
-    // 3. Process these records and store them (e.g., in the 'attendance_transactions' SQLite table).
-    // 4. On success, update 'securelink_lastFetchedTimestamp' and potentially 'securelink_fetchUpToDateTime'.
-    // 5. Return status and any new data count or errors.
-
     await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 1000)); // Simulate fetch time
 
-    const success = Math.random() > 0.2; // Simulate success/failure
+    const success = Math.random() > 0.2; 
     if (success) {
       const fetchedCount = Math.floor(Math.random() * 20) + 1;
       toast({ title: "Fetch Successful (Simulated)", description: `Fetched ${fetchedCount} new records from AAS.` });
       setDebugOutput(prev => `${prev}\nSimulated ${fetchType} fetch successful: ${fetchedCount} new records processed.`);
       addLog("SecureLinkPage", `Simulated ${fetchType} fetch successful. ${fetchedCount} records.`, "Success");
       
-      // Update last fetched timestamp (conceptual)
-      // localStorage.setItem("securelink_lastFetchedTimestamp", new Date().toISOString());
-      // Potentially update fetchUpToDateTime to the latest record fetched
-      // const newFetchUpTo = new Date(); // Example: set to now
-      // setFetchUpToDate(newFetchUpTo);
-      // setFetchUpToHour(format(newFetchUpTo, "HH"));
-      // setFetchUpToMinute(format(newFetchUpTo, "mm"));
-      // localStorage.setItem("securelink_fetchUpToDateTime", newFetchUpTo.toISOString());
+      localStorage.setItem("securelink_lastFetchedTimestamp", new Date().toISOString());
+      // Conceptually, update fetchUpToDate to the latest record fetched from this batch or simply to 'now' if preferred.
+      // For this simulation, we'll advance it by a small random amount.
+      const newFetchUpToDate = new Date(parseISO(fetchUpTo).getTime() + fetchedCount * 60000 * (Math.random() * 5)); // advance a bit
+      setFetchUpToDate(newFetchUpToDate);
+      setFetchUpToHour(format(newFetchUpToDate, "HH"));
+      setFetchUpToMinute(format(newFetchUpToDate, "mm"));
+      localStorage.setItem("securelink_fetchUpToDateTime", newFetchUpToDate.toISOString());
+      addLog("SecureLinkPage", `Simulated: Updated 'fetchUpToDateTime' to ${newFetchUpToDate.toISOString()}`, "Debug");
+
 
     } else {
       toast({ title: "Fetch Failed (Simulated)", description: "Could not retrieve new records from AAS. Check logs.", variant: "destructive" });
@@ -287,7 +288,7 @@ export default function SecureLinkPage() {
               type="file"
               accept=".mdb"
               onChange={handleFileChange}
-              className="file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer dark:file:bg-primary/20 dark:file:text-primary-foreground dark:hover:file:bg-primary/30"
+              className="file:mr-3 file:py-1 file:px-2 file:text-xs file:rounded-md file:border-0 file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer dark:file:bg-primary/20 dark:file:text-primary-foreground dark:hover:file:bg-primary/30"
               disabled={isLoading || isFetchingNow}
             />
             <p className="text-xs text-muted-foreground">
@@ -438,7 +439,7 @@ export default function SecureLinkPage() {
           </div>
         </CardContent>
         <CardFooter className="border-t pt-6">
-            <Button onClick={() => handleManualFetch(false)} disabled={isFetchingNow || isLoading || (!isConnected && !mdbFile)}>
+            <Button onClick={() => handleManualFetch(false)} disabled={isFetchingNow || isLoading || (!isConnected && !mdbFile && !mdbFileName) }>
                 {isFetchingNow && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 <RefreshCw className="mr-2 h-4 w-4" /> Fetch Now
             </Button>
@@ -449,3 +450,4 @@ export default function SecureLinkPage() {
   );
 }
 
+    
