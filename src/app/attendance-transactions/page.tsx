@@ -55,11 +55,13 @@ import type { AttendanceTransaction, TransactionType, UploadStatus } from "@/lib
 import {
   getAttendanceTransactions,
   clearAttendanceTransactions,
-  // seedSampleTransactions // Removed automatic seeding call
+  // seedSampleTransactions // Deliberately removed for production readiness
 } from "@/lib/attendance-manager";
+import { addLog } from "@/lib/app-logger";
 
 // For production with larger datasets, attendance transactions should be managed in a SQLite database
 // via Electron's main process to avoid localStorage performance limitations.
+// TODO: [Electron Main Process] Implement SQLite storage for attendance transactions.
 
 const RECORDS_PER_PAGE_OPTIONS = [
   { value: "10", label: "10 per page" },
@@ -104,27 +106,34 @@ export default function AttendanceTransactionsPage() {
     // Default sort by transaction_time descending (newest first)
     transactions.sort((a, b) => new Date(b.transaction_time).getTime() - new Date(a.transaction_time).getTime());
     setAllTransactions(transactions);
+    addLog("AttendanceTransactionsPage", `Loaded ${transactions.length} transactions.`, "Debug");
   }, []);
 
   React.useEffect(() => {
-    // Removed: seedSampleTransactions(); // Do not seed automatically for final version
+    // Removed: seedSampleTransactions(); // Deliberately removed for production readiness
     loadAndSetTransactions();
-    const handleTransactionsUpdated = () => loadAndSetTransactions();
+    const handleTransactionsUpdated = () => {
+        addLog("AttendanceTransactionsPage", "'attendanceTransactionsUpdated' event received. Reloading transactions.", "Debug");
+        loadAndSetTransactions();
+    }
     window.addEventListener('attendanceTransactionsUpdated', handleTransactionsUpdated);
     return () => window.removeEventListener('attendanceTransactionsUpdated', handleTransactionsUpdated);
   }, [loadAndSetTransactions]);
 
   React.useEffect(() => {
     localStorage.setItem("attendanceRecordsPerPage", recordsPerPage);
+    addLog("AttendanceTransactionsPage", `Records per page set to: ${recordsPerPage}.`, "Info");
   }, [recordsPerPage]);
 
   React.useEffect(() => {
     const storedRecordsPerPage = localStorage.getItem("attendanceRecordsPerPage");
     if (storedRecordsPerPage && RECORDS_PER_PAGE_OPTIONS.find(opt => opt.value === storedRecordsPerPage)) {
       setRecordsPerPage(storedRecordsPerPage);
+      addLog("AttendanceTransactionsPage", `Loaded 'recordsPerPage' from localStorage: ${storedRecordsPerPage}.`, "Debug");
     } else {
       localStorage.setItem("attendanceRecordsPerPage", RECORDS_PER_PAGE_OPTIONS[1].value);
       setRecordsPerPage(RECORDS_PER_PAGE_OPTIONS[1].value);
+      addLog("AttendanceTransactionsPage", `No 'recordsPerPage' in localStorage. Defaulted to ${RECORDS_PER_PAGE_OPTIONS[1].value} and saved.`, "Info");
     }
   }, []);
 
@@ -166,11 +175,22 @@ export default function AttendanceTransactionsPage() {
   }, [filteredTransactions, currentPage, numRecordsPerPage]);
 
   const handleClearAllTransactions = () => {
-    clearAttendanceTransactions(); // This will trigger the 'attendanceTransactionsUpdated' event
-    toast({
-      title: "Attendance Transactions Cleared",
-      description: "All attendance transaction records have been deleted.",
-    });
+    try {
+      clearAttendanceTransactions(); // This will trigger the 'attendanceTransactionsUpdated' event
+      toast({
+        title: "Attendance Transactions Cleared",
+        description: "All attendance transaction records have been deleted.",
+      });
+      addLog("AttendanceTransactionsPage", "All attendance transactions cleared by user.", "Info");
+    } catch (e) {
+      const errorMsg = e instanceof Error ? e.message : String(e);
+      toast({
+        title: "Error Clearing Transactions",
+        description: `Could not clear transactions: ${errorMsg}`,
+        variant: "destructive",
+      });
+      addLog("AttendanceTransactionsPage", `Error clearing transactions: ${errorMsg}`, "Error");
+    }
     setIsDeleteDialogOpen(false);
   };
   
@@ -181,6 +201,7 @@ export default function AttendanceTransactionsPage() {
     setDateFromFilter(undefined);
     setDateToFilter(undefined);
     toast({ title: "Filters Reset", description: "All transaction filters have been cleared." });
+    addLog("AttendanceTransactionsPage", "Transaction filters reset.", "Info");
   };
 
   const getBadgeVariantForStatus = (status: UploadStatus): { variant: "default" | "secondary" | "outline", className?: string } => {
@@ -227,7 +248,10 @@ export default function AttendanceTransactionsPage() {
               <Label htmlFor="transactionTypeFilter">Transaction Type</Label>
               <Select
                 value={transactionTypeFilter}
-                onValueChange={(value) => setTransactionTypeFilter(value as TransactionType | "all")}
+                onValueChange={(value) => {
+                    setTransactionTypeFilter(value as TransactionType | "all");
+                    addLog("AttendanceTransactionsPage", `Filter by transaction type: ${value}`, "Debug");
+                }}
               >
                 <SelectTrigger id="transactionTypeFilter">
                   <SelectValue placeholder="Select type" />
@@ -245,7 +269,10 @@ export default function AttendanceTransactionsPage() {
               <Label htmlFor="statusFilter">Upload Status</Label>
               <Select
                 value={statusFilter}
-                onValueChange={(value) => setStatusFilter(value as UploadStatus | "all")}
+                onValueChange={(value) => {
+                    setStatusFilter(value as UploadStatus | "all");
+                    addLog("AttendanceTransactionsPage", `Filter by upload status: ${value}`, "Debug");
+                }}
               >
                 <SelectTrigger id="statusFilter">
                   <SelectValue placeholder="Select status" />
@@ -279,7 +306,10 @@ export default function AttendanceTransactionsPage() {
                   <Calendar
                     mode="single"
                     selected={dateFromFilter}
-                    onSelect={setDateFromFilter}
+                    onSelect={(date) => {
+                        setDateFromFilter(date);
+                        addLog("AttendanceTransactionsPage", `Filter date from: ${date ? format(date, "PPP") : 'cleared'}`, "Debug");
+                    }}
                     initialFocus
                   />
                 </PopoverContent>
@@ -305,7 +335,10 @@ export default function AttendanceTransactionsPage() {
                   <Calendar
                     mode="single"
                     selected={dateToFilter}
-                    onSelect={setDateToFilter}
+                    onSelect={(date) => {
+                        setDateToFilter(date);
+                        addLog("AttendanceTransactionsPage", `Filter date to: ${date ? format(date, "PPP") : 'cleared'}`, "Debug");
+                    }}
                     disabled={(date) => dateFromFilter ? date < dateFromFilter : false}
                     initialFocus
                   />
@@ -342,10 +375,11 @@ export default function AttendanceTransactionsPage() {
                 <AlertDialogDescription>
                   This action cannot be undone. This will permanently delete all
                   attendance transaction records from local storage.
+                  {/* This warning is crucial as localStorage is client-side. */}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogCancel onClick={() => addLog("AttendanceTransactionsPage", "Delete all transactions cancelled by user.", "Debug")}>Cancel</AlertDialogCancel>
                 <AlertDialogAction onClick={handleClearAllTransactions} className="bg-destructive hover:bg-destructive/90">
                   Yes, delete all transactions
                 </AlertDialogAction>
@@ -358,6 +392,7 @@ export default function AttendanceTransactionsPage() {
             <Table className="min-w-full">
               <TableHeader className="sticky top-0 bg-card z-10 shadow-sm">
                 <TableRow>
+                  {/* ID column removed as per requirement */}
                   <TableHead className="p-3 w-[150px]">Employee ID</TableHead>
                   <TableHead className="p-3 w-[180px]">Transaction Time</TableHead>
                   <TableHead className="p-3 w-[120px]">Type</TableHead>
@@ -371,7 +406,8 @@ export default function AttendanceTransactionsPage() {
                   paginatedTransactions.map((transaction) => {
                     const badgeStyle = getBadgeVariantForStatus(transaction.status);
                     return (
-                    <TableRow key={transaction.id}>
+                    // Using employee_id + transaction_time for key as ID might not be unique if sample data is re-added without clearing
+                    <TableRow key={transaction.employee_id + transaction.transaction_time}>
                       <TableCell className="p-3">{transaction.employee_id}</TableCell>
                       <TableCell className="p-3">
                         {format(new Date(transaction.transaction_time), "PPpp")}
@@ -388,8 +424,8 @@ export default function AttendanceTransactionsPage() {
                   )})
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center p-8 text-muted-foreground h-48">
-                      No attendance transactions found matching your criteria, or no data available.
+                    <TableCell colSpan={5} className="text-center p-8 text-muted-foreground h-48">
+                      {allTransactions.length > 0 ? "No attendance transactions found matching your criteria." : "No attendance data available." }
                     </TableCell>
                   </TableRow>
                 )}
@@ -405,6 +441,7 @@ export default function AttendanceTransactionsPage() {
               onValueChange={(value) => {
                 setRecordsPerPage(value);
                 setCurrentPage(1); // Reset to first page when changing records per page
+                addLog("AttendanceTransactionsPage", `Records per page changed to: ${value}`, "Debug");
               }}
             >
               <SelectTrigger id="recordsPerPage" className="w-[120px] h-9">
@@ -445,5 +482,3 @@ export default function AttendanceTransactionsPage() {
     </div>
   );
 }
-    
-```
