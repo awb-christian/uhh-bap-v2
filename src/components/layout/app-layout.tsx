@@ -13,7 +13,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             width={32} 
             height={32} 
             className="rounded-md"
-            data-ai-hint="logo uhh abstract"
+            data-ai-hint="uhh official logo"
           />
           <h1 className="text-xl font-semibold font-headline text-sidebar-foreground">UHH BAP V2</h1>
         </SidebarHeader>
