@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Link2, FileUp, KeyRound, Loader2, CheckCircle, XCircle } from "lucide-react";
+import { Link2, FileUp, KeyRound, Loader2, CheckCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 // Mock data for tmpTRecords for debugging purposes
@@ -21,22 +21,18 @@ const mockTmpTRecords = [
 
 export default function SecureLinkPage() {
   const { toast } = useToast();
-  const [mdbFile, setMdbFile] = React.useState<File | null>(null); // Stores the actual File object
-  const [mdbFileName, setMdbFileName] = React.useState<string>(""); // Stores the name for display and persistence
+  const [mdbFile, setMdbFile] = React.useState<File | null>(null);
+  const [mdbFileName, setMdbFileName] = React.useState<string>("");
   const [password, setPassword] = React.useState<string>("");
   const [isLoading, setIsLoading] = React.useState(false);
   const [debugOutput, setDebugOutput] = React.useState<string>("");
-  const [isConnected, setIsConnected] = React.useState(false);
+  const [isConnected, setIsConnected] = React.useState(false); // Tracks simulated connection
 
-  // Load saved settings from localStorage on component mount
   React.useEffect(() => {
     const savedFileName = localStorage.getItem("securelink_mdbFileName");
     const savedPassword = localStorage.getItem("securelink_password");
     if (savedFileName) {
       setMdbFileName(savedFileName);
-      // Note: We can't reconstruct the File object from localStorage.
-      // The user would still need to re-select the file if actual file access is needed on load.
-      // The mdbFileName is kept to pre-fill the context for the user.
     }
     if (savedPassword) {
       setPassword(savedPassword);
@@ -46,16 +42,16 @@ export default function SecureLinkPage() {
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file && file.name.toLowerCase().endsWith(".mdb")) {
-      setMdbFile(file); // Store the File object
-      setMdbFileName(file.name); // Update the name
+      setMdbFile(file);
+      setMdbFileName(file.name);
       localStorage.setItem("securelink_mdbFileName", file.name);
-      setDebugOutput(""); // Clear previous debug output
-      setIsConnected(false); // Reset connection status
+      setDebugOutput("");
+      setIsConnected(false);
     } else {
       setMdbFile(null);
-      setMdbFileName("");
-      localStorage.removeItem("securelink_mdbFileName");
-      if (file) { // if a file was selected but it wasn't .mdb
+      setMdbFileName(""); // Clear the name if no file or invalid file
+      localStorage.removeItem("securelink_mdbFileName"); // Also clear from storage
+      if (file) {
         toast({
           title: "Invalid File Type",
           description: "Please select a valid .mdb file.",
@@ -71,18 +67,7 @@ export default function SecureLinkPage() {
     localStorage.setItem("securelink_password", newPassword);
   };
 
-  /**
-   * Placeholder function to simulate testing the MDB database connection.
-   * In a real Electron application, this function would trigger an IPC call
-   * to the main process. The main process would then use a library like
-   * 'node-adodb' or 'odbc' to:
-   * 1. Access the MDB file using the full path (obtained via Electron's dialog API, not the File object).
-   * 2. Attempt to open the database with the provided password.
-   * 3. If successful, execute a query like "SELECT * FROM tmpTRecords".
-   * 4. Return the success status and data (or error message) back to this renderer process.
-   */
   const handleTestConnection = async () => {
-    // Ensure a file name is present (either from current selection or localStorage) and password is entered
     if (!mdbFileName || !password) {
         toast({
             title: "Missing Information",
@@ -91,22 +76,38 @@ export default function SecureLinkPage() {
         });
         return;
     }
-    // If mdbFile is null, it means the name is from localStorage, and user needs to reselect for actual ops.
-    // For simulation, we proceed if mdbFileName exists. In real app, you'd need mdbFile or its actual path.
     
     setIsLoading(true);
     setDebugOutput("");
     setIsConnected(false);
 
-    // Simulate asynchronous operation (e.g., network request or file access)
+    // Simulate network delay / file access
+    // In a real Electron app, this would be an IPC call to the main process
+    // which would use a library like 'node-adodb' or 'better-sqlite3' (if MDB was converted)
+    // or a custom native module to interact with the MDB file.
+    // For example:
+    // try {
+    //   const result = await window.electronAPI.connectToMdb({ filePath: mdbFile?.path /* if available */, password });
+    //   if (result.success) {
+    //     setDebugOutput(JSON.stringify(result.data.tmpTRecords, null, 2)); // Assuming tmpTRecords data is returned
+    //     setIsConnected(true);
+    //     toast({ title: "Connection Successful", description: `Successfully connected to ${mdbFileName}.` });
+    //   } else {
+    //     setDebugOutput(`Error: ${result.error}`);
+    //     setIsConnected(false);
+    //     toast({ title: "Connection Failed", description: result.error, variant: "destructive" });
+    //   }
+    // } catch (error) {
+    //    setDebugOutput(`Error: ${error.message}`);
+    //    setIsConnected(false);
+    //    toast({ title: "Connection Error", description: "An unexpected error occurred.", variant: "destructive" });
+    // }
+
+    // SIMULATION:
     await new Promise(resolve => setTimeout(resolve, 1500 + Math.random() * 500));
 
-    // SIMULATION LOGIC:
-    // Replace this with actual database connection attempt via IPC to main process.
-    // For this simulation, we'll assume connection is successful if password is "Timmy".
-    if (password === "Timmy") {
-      // Simulate fetching data from 'tmpTRecords'
-      const simulatedData = mockTmpTRecords; // Using mock data
+    if (password === "Timmy") { // Using "Timmy" from your Python example as a "correct" password for simulation
+      const simulatedData = mockTmpTRecords; // Use mock data
       setDebugOutput(JSON.stringify(simulatedData, null, 2));
       setIsConnected(true);
       toast({
@@ -126,7 +127,6 @@ export default function SecureLinkPage() {
     setIsLoading(false);
   };
   
-  // Enable button if a file name is set (either from new selection or localStorage) AND password is not empty
   const canTestConnection = Boolean(mdbFileName && password && !isLoading);
 
   return (
@@ -140,21 +140,21 @@ export default function SecureLinkPage() {
       </CardHeader>
       <CardContent className="pt-6 space-y-6">
         {isConnected && (
-          <div className="p-4 bg-green-50 border border-green-200 rounded-lg shadow-sm flex items-center gap-3">
-            <CheckCircle className="h-6 w-6 text-green-600" />
+          <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg shadow-sm flex items-center gap-3">
+            <CheckCircle className="h-6 w-6 text-green-600 dark:text-green-400" />
             <div>
-              <h4 className="text-lg font-semibold text-green-800">Database Connected (Simulated)</h4>
-              <p className="text-sm text-green-700">
+              <h4 className="text-lg font-semibold text-green-800 dark:text-green-300">Database Connected (Simulated)</h4>
+              <p className="text-sm text-green-700 dark:text-green-400">
                 Successfully established a simulated connection to <span className="font-medium">{mdbFileName}</span>.
               </p>
             </div>
           </div>
         )}
         {!isConnected && mdbFileName && !isLoading && (
-            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg shadow-sm">
-                <p className="text-sm text-blue-700">
+            <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg shadow-sm">
+                <p className="text-sm text-blue-700 dark:text-blue-400">
                 Selected database: <span className="font-medium">{mdbFileName}</span>. 
-                {mdbFile ? "Ready to test." : "Please re-select the file if you want to perform a new connection test with actual file content."}
+                {mdbFile ? " Ready to test." : " Please re-select the file if you want to perform a new connection test with actual file content."}
                 </p>
             </div>
         )}
@@ -167,16 +167,16 @@ export default function SecureLinkPage() {
           <Input
             id="mdb-file"
             type="file"
-            accept=".mdb" // Restrict file selection to .mdb
+            accept=".mdb"
             onChange={handleFileChange}
-            className="file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer"
+            className="file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer dark:file:bg-primary/20 dark:file:text-primary-foreground dark:hover:file:bg-primary/30"
             disabled={isLoading}
           />
           <p className="text-xs text-muted-foreground">
             Select the AAS database (e.g., TMKQ.mdb). It is usually located in Program Files. It is in .mdb file format.
           </p>
-           {mdbFileName && !mdbFile && ( // Show if name exists (from localStorage) but no File object (not re-selected)
-            <p className="text-xs text-yellow-600 mt-1">
+           {mdbFileName && !mdbFile && (
+            <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-1">
               Previously selected: {mdbFileName}. For actual operations, please re-select the file.
             </p>
           )}
@@ -194,7 +194,7 @@ export default function SecureLinkPage() {
             onChange={handlePasswordChange}
             placeholder="Enter database password"
             disabled={isLoading}
-            autoComplete="current-password" // Helps with password managers, though be mindful of Electron context
+            autoComplete="current-password"
           />
           <p className="text-xs text-muted-foreground">
             It will be use to access AAS database and fetch attendance transactions from biometric devices.
@@ -205,14 +205,13 @@ export default function SecureLinkPage() {
           <Button 
             onClick={handleTestConnection} 
             disabled={!canTestConnection}
-            className="bg-primary hover:bg-primary/90 text-primary-foreground"
           >
             {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Test Connection
           </Button>
         </div>
 
-        {(debugOutput || isLoading || isConnected) && ( // Show debug area if there's output, loading, or connected
+        {(debugOutput || isLoading || isConnected) && (
           <div className="space-y-2 pt-4 border-t">
             <Label htmlFor="debug-output" className="font-medium">Debug Output (Simulated 'tmpTRecords' Data)</Label>
             <Textarea
@@ -220,7 +219,7 @@ export default function SecureLinkPage() {
               value={isLoading ? "Connecting and fetching data..." : debugOutput}
               readOnly
               rows={10}
-              className="font-mono text-xs bg-muted/30 border rounded-md p-2 h-48"
+              className="font-mono text-xs bg-muted/30 dark:bg-muted/50 border rounded-md p-2 h-48"
               placeholder="Attempt connection to see simulated records from 'tmpTRecords'..."
             />
              <p className="text-xs text-muted-foreground">
@@ -232,5 +231,3 @@ export default function SecureLinkPage() {
     </Card>
   );
 }
-
-    

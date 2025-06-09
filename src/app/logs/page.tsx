@@ -83,7 +83,6 @@ export default function LogsPage() {
   const loadAndSetLogs = React.useCallback(() => {
     const allLogs = getLogs().sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     setLogs(allLogs);
-    // addLog("LogsPage", "Logs loaded/reloaded.", "Debug"); // Avoid logging about logging itself too much
   }, []);
 
 
@@ -95,18 +94,17 @@ export default function LogsPage() {
     const storedLimit = localStorage.getItem("displayLogLimit");
     if (storedLimit && DISPLAY_LIMIT_OPTIONS.find(opt => opt.value === storedLimit)) {
       setDisplayLogLimit(storedLimit);
+    } else {
+       // If no stored limit, set to default and save it
+      localStorage.setItem("displayLogLimit", DISPLAY_LIMIT_OPTIONS[1].value);
     }
     loadAndSetLogs();
 
     const handleLogsUpdated = () => {
-      // console.log("logsUpdated event received in LogsPage"); // For debugging
       loadAndSetLogs();
     };
     window.addEventListener('logsUpdated', handleLogsUpdated);
     
-    // Initial log to confirm page load (optional)
-    // addLog("LogsPage", "Logs page initialized and event listener attached.", "Debug");
-
     return () => {
       window.removeEventListener('logsUpdated', handleLogsUpdated);
     };
@@ -115,15 +113,21 @@ export default function LogsPage() {
 
   React.useEffect(() => {
     localStorage.setItem("logRetentionPeriod", logRetentionPeriod);
-    addLog("LogsPage", `Log retention period set to: ${RETENTION_OPTIONS.find(o => o.value === logRetentionPeriod)?.label || logRetentionPeriod}.`, "Info");
-    // Placeholder: In a real app, this change would trigger logic (e.g., via IPC to Electron main)
-    // to schedule or perform log cleanup based on the new retention period.
+    // Only log if not the initial default setting or actual change by user interaction
+    if (localStorage.getItem("logRetentionPeriodInitialized")) {
+        addLog("LogsPage", `Log retention period set to: ${RETENTION_OPTIONS.find(o => o.value === logRetentionPeriod)?.label || logRetentionPeriod}.`, "Info");
+    } else {
+        localStorage.setItem("logRetentionPeriodInitialized", "true");
+    }
   }, [logRetentionPeriod]);
 
   React.useEffect(() => {
     localStorage.setItem("displayLogLimit", displayLogLimit);
-    addLog("LogsPage", `Display log limit set to: ${DISPLAY_LIMIT_OPTIONS.find(o => o.value === displayLogLimit)?.label || displayLogLimit}.`, "Info");
-    // No direct action needed here other than persisting, filtering is done by displayedLogs memo
+     if (localStorage.getItem("displayLogLimitInitialized")) {
+        addLog("LogsPage", `Display log limit set to: ${DISPLAY_LIMIT_OPTIONS.find(o => o.value === displayLogLimit)?.label || displayLogLimit}.`, "Info");
+    } else {
+        localStorage.setItem("displayLogLimitInitialized", "true");
+    }
   }, [displayLogLimit]);
 
   const displayedLogs = React.useMemo(() => {
@@ -327,17 +331,24 @@ export default function LogsPage() {
 // Conceptual Table Schemas for SQLite (to be managed by a backend/Electron main process):
 //
 // logs table:
-//   id INTEGER PRIMARY KEY AUTOINCREMENT,
-//   timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, (Should store as ISO8601 string or Unix timestamp)
+//   id TEXT PRIMARY KEY, -- Using UUID or similar text-based ID from client
+//   timestamp TEXT NOT NULL, -- ISO8601 string
 //   source TEXT,
 //   message TEXT,
 //   status TEXT CHECK(status IN ('Success', 'Error', 'Info', 'Debug'))
 //
 // attendance_transactions table:
-//   id INTEGER PRIMARY KEY AUTOINCREMENT,
+//   id TEXT PRIMARY KEY, -- Using UUID or similar
 //   employee_id TEXT NOT NULL,
 //   transaction_type TEXT CHECK(transaction_type IN ('check-in', 'check-out')) NOT NULL,
-//   transaction_time DATETIME NOT NULL, (Should store as ISO8601 string or Unix timestamp)
+//   transaction_time TEXT NOT NULL, -- ISO8601 string
 //   source_type TEXT DEFAULT 'biometric',
 //   device_id TEXT,
 //   status TEXT CHECK(status IN ('not_uploaded', 'uploaded')) DEFAULT 'not_uploaded'
+//
+// Note: For timestamp/datetime fields, storing as ISO8601 strings (TEXT) is often easier
+// for interoperability than Unix timestamps (INTEGER) when dealing with timezones,
+// especially if the client and server are in different timezones. SQLite can handle
+// date functions on ISO8601 strings.
+
+    

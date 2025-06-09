@@ -4,38 +4,39 @@
 
 @layer base {
   :root {
-    --background: 220 20% 96%; /* Light gray #F5F7FA - slightly cooler */
-    --foreground: 220 10% 20%; /* Dark Gray for text - slightly bluer */
+    /* Updated Light Theme based on PRD */
+    --background: 210 17% 95%; /* Light gray #F0F2F5 */
+    --foreground: 210 10% 20%; /* Dark Gray for text */
 
-    --card: 220 20% 96%; /* Same as background */
-    --card-foreground: 220 10% 20%; /* Same as foreground */
+    --card: 210 17% 95%; /* Same as background */
+    --card-foreground: 210 10% 20%; /* Same as foreground */
 
-    --popover: 220 20% 96%; /* Same as background */
-    --popover-foreground: 220 10% 20%; /* Same as foreground */
+    --popover: 210 17% 95%; /* Same as background */
+    --popover-foreground: 210 10% 20%; /* Same as foreground */
 
-    --primary: 183 100% 40%; /* UHH Teal: ~#00C2CB */
-    --primary-foreground: 0 0% 100%; /* White for contrast */
+    --primary: 206 25% 60%; /* Slate Blue #7395AE */
+    --primary-foreground: 210 40% 98%; /* White for contrast */
 
-    --secondary: 200 60% 90%; /* Lighter, softer blue-gray */
-    --secondary-foreground: 220 10% 20%; /* Dark text for secondary */
+    --secondary: 210 17% 90%; /* Lighter gray for secondary elements */
+    --secondary-foreground: 210 10% 20%; /* Dark text for secondary */
 
-    --muted: 220 20% 92%; /* Slightly darker than background for muted elements */
-    --muted-foreground: 220 10% 45%; /* Lighter gray text */
+    --muted: 210 17% 88%; /* Slightly darker than background for muted elements */
+    --muted-foreground: 210 10% 45%; /* Lighter gray text */
 
-    --accent: 183 80% 50%; /* Lighter UHH Teal variant: ~#1AD1D8 */
-    --accent-foreground: 0 0% 100%; /* White for contrast */
+    --accent: 194 47% 60%; /* Soft Teal #64B5CD */
+    --accent-foreground: 210 40% 98%; /* White for contrast */
 
     --destructive: 0 72% 51%; /* A clearer red */
     --destructive-foreground: 0 0% 98%;
 
-    --border: 220 20% 88%; /* Subtle border, cooler tone */
-    --input: 220 20% 92%; /* Input background, matching muted */
-    --ring: 183 100% 40%; /* UHH Teal for focus rings */
+    --border: 210 17% 80%; /* Subtle border */
+    --input: 210 17% 88%; /* Input background, matching muted */
+    --ring: 206 25% 60%; /* Slate Blue for focus rings */
 
-    --chart-1: 183 100% 40%; /* UHH Teal */
-    --chart-2: 170 70% 45%; /* Slightly greener Teal */
-    --chart-3: 190 60% 50%; /* Slightly bluer Teal */
-    --chart-4: 210 50% 60%; /* Soft Blue */
+    --chart-1: 206 25% 60%; /* Slate Blue */
+    --chart-2: 194 47% 60%; /* Soft Teal */
+    --chart-3: 206 25% 70%; /* Lighter Slate Blue */
+    --chart-4: 194 47% 70%; /* Lighter Soft Teal */
     --chart-5: 30 80% 60%; /* Orange for contrast if needed */
     --radius: 0.5rem;
 
@@ -51,47 +52,47 @@
   }
 
   .dark {
-    /* Dark theme based on UHH Teal */
-    --background: 220 15% 10%; /* Dark Blue-Gray */
-    --foreground: 200 20% 90%; /* Light Gray-Blue */
+    /* Updated Dark Theme */
+    --background: 210 10% 15%; /* Dark Slate/Gray */
+    --foreground: 210 15% 85%; /* Light Gray */
     
-    --card: 220 15% 12%; /* Slightly lighter than background */
-    --card-foreground: 200 20% 90%;
+    --card: 210 10% 18%; /* Slightly lighter than background */
+    --card-foreground: 210 15% 85%;
     
-    --popover: 220 15% 10%;
-    --popover-foreground: 200 20% 90%;
+    --popover: 210 10% 15%;
+    --popover-foreground: 210 15% 85%;
     
-    --primary: 183 80% 55%; /* Brighter UHH Teal for dark mode */
-    --primary-foreground: 220 100% 10%; /* Very dark, almost black for contrast on bright teal */
+    --primary: 206 30% 70%; /* Lighter Slate Blue for dark mode */
+    --primary-foreground: 210 10% 10%; /* Very dark for contrast on primary */
     
-    --secondary: 220 15% 20%; /* Darker muted blue-gray */
-    --secondary-foreground: 200 20% 80%; 
+    --secondary: 210 10% 25%; /* Darker muted gray-blue */
+    --secondary-foreground: 210 15% 80%; 
     
-    --muted: 220 15% 15%; 
-    --muted-foreground: 200 20% 60%;
+    --muted: 210 10% 20%; 
+    --muted-foreground: 210 15% 60%;
     
-    --accent: 183 70% 65%; /* Softer, lighter UHH Teal for dark accents */
-    --accent-foreground: 220 100% 10%;
+    --accent: 194 50% 70%; /* Lighter Soft Teal for dark accents */
+    --accent-foreground: 210 10% 10%; /* Very dark for contrast on accent */
     
-    --destructive: 0 60% 50%; 
+    --destructive: 0 60% 55%; 
     --destructive-foreground: 0 0% 95%;
     
-    --border: 220 15% 25%;
-    --input: 220 15% 18%;
-    --ring: 183 80% 55%; /* Brighter UHH Teal for focus rings */
+    --border: 210 10% 30%;
+    --input: 210 10% 22%;
+    --ring: 206 30% 70%; /* Lighter Slate Blue for focus rings */
 
-    --chart-1: 183 80% 55%;
-    --chart-2: 170 60% 60%;
-    --chart-3: 190 50% 65%;
-    --chart-4: 210 40% 70%;
-    --chart-5: 30 70% 65%;
+    --chart-1: 206 30% 70%;
+    --chart-2: 194 50% 70%;
+    --chart-3: 206 30% 80%;
+    --chart-4: 194 50% 80%;
+    --chart-5: 30 70% 70%;
 
     /* Sidebar dark theme adjustments */
-    --sidebar-background: 220 15% 8%; /* Even darker for sidebar */
+    --sidebar-background: 210 10% 12%; /* Even darker for sidebar */
     --sidebar-foreground: var(--foreground);
     --sidebar-primary: var(--primary);
     --sidebar-primary-foreground: var(--primary-foreground);
-    --sidebar-accent: 220 15% 18%; /* Use secondary as accent base */
+    --sidebar-accent: 210 10% 22%; /* Use a muted dark color for sidebar accent */
     --sidebar-accent-foreground: var(--secondary-foreground);
     --sidebar-border: var(--border);
     --sidebar-ring: var(--ring);
