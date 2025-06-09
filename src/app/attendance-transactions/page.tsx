@@ -55,7 +55,11 @@ import type { AttendanceTransaction, TransactionType, UploadStatus } from "@/lib
 import {
   getAttendanceTransactions,
   clearAttendanceTransactions,
+  // seedSampleTransactions // Removed automatic seeding call
 } from "@/lib/attendance-manager";
+
+// For production with larger datasets, attendance transactions should be managed in a SQLite database
+// via Electron's main process to avoid localStorage performance limitations.
 
 const RECORDS_PER_PAGE_OPTIONS = [
   { value: "10", label: "10 per page" },
@@ -103,6 +107,7 @@ export default function AttendanceTransactionsPage() {
   }, []);
 
   React.useEffect(() => {
+    // Removed: seedSampleTransactions(); // Do not seed automatically for final version
     loadAndSetTransactions();
     const handleTransactionsUpdated = () => loadAndSetTransactions();
     window.addEventListener('attendanceTransactionsUpdated', handleTransactionsUpdated);
@@ -117,6 +122,9 @@ export default function AttendanceTransactionsPage() {
     const storedRecordsPerPage = localStorage.getItem("attendanceRecordsPerPage");
     if (storedRecordsPerPage && RECORDS_PER_PAGE_OPTIONS.find(opt => opt.value === storedRecordsPerPage)) {
       setRecordsPerPage(storedRecordsPerPage);
+    } else {
+      localStorage.setItem("attendanceRecordsPerPage", RECORDS_PER_PAGE_OPTIONS[1].value);
+      setRecordsPerPage(RECORDS_PER_PAGE_OPTIONS[1].value);
     }
   }, []);
 
@@ -333,7 +341,7 @@ export default function AttendanceTransactionsPage() {
                 <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                 <AlertDialogDescription>
                   This action cannot be undone. This will permanently delete all
-                  attendance transaction records.
+                  attendance transaction records from local storage.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -437,5 +445,5 @@ export default function AttendanceTransactionsPage() {
     </div>
   );
 }
-
     
+```
