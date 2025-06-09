@@ -1,9 +1,10 @@
+
 "use client";
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import type { LucideIcon } from 'lucide-react';
-import { ScrollText, Fingerprint, Clock, Shield, Link2 as LinkIcon, Network } from 'lucide-react';
+import { ScrollText, Fingerprint, Clock, Shield, Link2 as LinkIcon, Network, ClipboardList } from 'lucide-react';
 import { SidebarMenu, SidebarMenuItem, SidebarMenuButton } from '@/components/ui/sidebar';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
@@ -18,6 +19,7 @@ interface NavItemConfig {
 
 const navItems: NavItemConfig[] = [
   { href: '/logs', label: 'Logs', icon: ScrollText },
+  { href: '/attendance-transactions', label: 'Attendance', icon: ClipboardList },
   { href: '/zkteco-biotime', label: 'ZKTeco (ZKBiotime)', icon: Fingerprint, soon: true, disabled: true },
   { href: '/zkteco-time', label: 'ZKTeco (ZKTime)', icon: Clock, soon: true, disabled: true },
   { href: '/sentry', label: 'Sentry', icon: Shield, soon: true, disabled: true },
