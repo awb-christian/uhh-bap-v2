@@ -26,8 +26,6 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-  SelectGroup,
-  SelectLabel,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import {
@@ -49,7 +47,7 @@ import {
 } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { Calendar as CalendarIcon, Trash2, Search, FilterX } from "lucide-react";
+import { Calendar as CalendarIcon, Trash2, FilterX } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -57,8 +55,6 @@ import type { AttendanceTransaction, TransactionType, UploadStatus } from "@/lib
 import {
   getAttendanceTransactions,
   clearAttendanceTransactions,
-  seedSampleTransactions,
-  addAttendanceTransaction, // Added for potential future use
 } from "@/lib/attendance-manager";
 
 const RECORDS_PER_PAGE_OPTIONS = [
@@ -101,10 +97,6 @@ export default function AttendanceTransactionsPage() {
 
   const loadAndSetTransactions = React.useCallback(() => {
     let transactions = getAttendanceTransactions();
-    if (transactions.length === 0) {
-      seedSampleTransactions(); // Seed if local storage is empty
-      transactions = getAttendanceTransactions();
-    }
     // Default sort by transaction_time descending (newest first)
     transactions.sort((a, b) => new Date(b.transaction_time).getTime() - new Date(a.transaction_time).getTime());
     setAllTransactions(transactions);
@@ -166,13 +158,12 @@ export default function AttendanceTransactionsPage() {
   }, [filteredTransactions, currentPage, numRecordsPerPage]);
 
   const handleClearAllTransactions = () => {
-    clearAttendanceTransactions();
+    clearAttendanceTransactions(); // This will trigger the 'attendanceTransactionsUpdated' event
     toast({
       title: "Attendance Transactions Cleared",
       description: "All attendance transaction records have been deleted.",
     });
     setIsDeleteDialogOpen(false);
-    // loadAndSetTransactions will be called by the event listener
   };
   
   const handleResetFilters = () => {
@@ -194,6 +185,15 @@ export default function AttendanceTransactionsPage() {
         return { variant: 'outline', className: 'dark:text-gray-400 dark:border-gray-600' };
     }
   };
+
+  const formatTransactionType = (type: TransactionType) => {
+    return type === 'check-in' ? 'Check-in' : 'Check-out';
+  };
+
+  const formatStatus = (status: UploadStatus) => {
+    return status === 'not_uploaded' ? 'Not Uploaded' : 'Uploaded';
+  };
+
 
   return (
     <div className="flex flex-col h-full space-y-6">
@@ -350,11 +350,10 @@ export default function AttendanceTransactionsPage() {
             <Table className="min-w-full">
               <TableHeader className="sticky top-0 bg-card z-10 shadow-sm">
                 <TableRow>
-                  <TableHead className="p-3 w-[100px]">ID</TableHead>
                   <TableHead className="p-3 w-[150px]">Employee ID</TableHead>
                   <TableHead className="p-3 w-[180px]">Transaction Time</TableHead>
                   <TableHead className="p-3 w-[120px]">Type</TableHead>
-                  <TableHead className="p-3 w-[150px]">Source Type</TableHead>
+                  <TableHead className="p-3 w-[150px]">Source</TableHead>
                   <TableHead className="p-3 w-[150px]">Device ID</TableHead>
                   <TableHead className="p-3 w-[120px] text-right">Status</TableHead>
                 </TableRow>
@@ -365,24 +364,23 @@ export default function AttendanceTransactionsPage() {
                     const badgeStyle = getBadgeVariantForStatus(transaction.status);
                     return (
                     <TableRow key={transaction.id}>
-                      <TableCell className="p-3 truncate" title={transaction.id}>{transaction.id.substring(0, 8)}...</TableCell>
                       <TableCell className="p-3">{transaction.employee_id}</TableCell>
                       <TableCell className="p-3">
                         {format(new Date(transaction.transaction_time), "PPpp")}
                       </TableCell>
-                      <TableCell className="p-3">{transaction.transaction_type}</TableCell>
-                      <TableCell className="p-3">{transaction.source_type}</TableCell>
+                      <TableCell className="p-3">{formatTransactionType(transaction.transaction_type)}</TableCell>
+                      <TableCell className="p-3">Biometric</TableCell> 
                       <TableCell className="p-3 truncate" title={transaction.device_id}>{transaction.device_id}</TableCell>
                       <TableCell className="p-3 text-right">
                          <Badge variant={badgeStyle.variant} className={badgeStyle.className}>
-                          {transaction.status.replace("_", " ")}
+                          {formatStatus(transaction.status)}
                         </Badge>
                       </TableCell>
                     </TableRow>
                   )})
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center p-8 text-muted-foreground h-48">
+                    <TableCell colSpan={6} className="text-center p-8 text-muted-foreground h-48">
                       No attendance transactions found matching your criteria, or no data available.
                     </TableCell>
                   </TableRow>
@@ -439,6 +437,5 @@ export default function AttendanceTransactionsPage() {
     </div>
   );
 }
-
 
     
