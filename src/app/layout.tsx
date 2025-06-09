@@ -5,8 +5,8 @@ import { Toaster } from "@/components/ui/toaster";
 
 
 export const metadata: Metadata = {
-  title: 'Odoo Attendance Pusher',
-  description: 'Desktop app for pushing attendance to Odoo.',
+  title: 'UHH BAP V2',
+  description: 'Desktop app for UHH BAP V2.',
 };
 
 export default function RootLayout({

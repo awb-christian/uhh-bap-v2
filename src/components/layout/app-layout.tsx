@@ -1,12 +1,21 @@
 import { SidebarProvider, Sidebar, SidebarInset, SidebarTrigger, SidebarHeader, SidebarContent, SidebarFooter } from '@/components/ui/sidebar';
 import SidebarNav from './sidebar-nav';
+import Image from 'next/image';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <SidebarProvider defaultOpen={true}>
       <Sidebar collapsible="icon" className="border-r border-sidebar-border">
-        <SidebarHeader className="p-4">
-          <h1 className="text-xl font-semibold font-headline text-sidebar-foreground">Odoo Attendance Pusher</h1>
+        <SidebarHeader className="p-4 flex items-center gap-2">
+          <Image 
+            src="https://placehold.co/40x40.png" 
+            alt="UHH BAP V2 Logo" 
+            width={32} 
+            height={32} 
+            className="rounded-md"
+            data-ai-hint="logo uhh abstract"
+          />
+          <h1 className="text-xl font-semibold font-headline text-sidebar-foreground">UHH BAP V2</h1>
         </SidebarHeader>
         <SidebarContent className="p-0"> {/* Remove padding from content to allow menu items to control their own */}
           <SidebarNav />
