@@ -8,6 +8,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  CardFooter
 } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -19,6 +20,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -28,28 +30,23 @@ import {
   SelectLabel,
   SelectGroup,
 } from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { LogDetailsModal } from "@/components/logs/log-details-modal";
 import type { LogEntry, LogEntryStatus } from "@/lib/app-logger"; 
-import { getLogs, clearLogs } from "@/lib/app-logger"; // We'll use getLogs
-
-// Conceptual Table Schemas for SQLite (to be managed by a backend/Electron main process):
-//
-// logs table:
-//   id INTEGER PRIMARY KEY AUTOINCREMENT,
-//   timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, (Should store as ISO8601 string or Unix timestamp)
-//   source TEXT,
-//   message TEXT,
-//   status TEXT CHECK(status IN ('Success', 'Error', 'Info', 'Debug'))
-//
-// attendance_transactions table:
-//   id INTEGER PRIMARY KEY AUTOINCREMENT,
-//   employee_id TEXT NOT NULL,
-//   transaction_type TEXT CHECK(transaction_type IN ('check-in', 'check-out')) NOT NULL,
-//   transaction_time DATETIME NOT NULL, (Should store as ISO8601 string or Unix timestamp)
-//   source_type TEXT DEFAULT 'biometric',
-//   device_id TEXT,
-//   status TEXT CHECK(status IN ('not_uploaded', 'uploaded')) DEFAULT 'not_uploaded'
+import { getLogs, clearLogs, addLog } from "@/lib/app-logger"; 
+import { useToast } from "@/hooks/use-toast";
+import { Trash2 } from "lucide-react";
 
 
 const RETENTION_OPTIONS = [
@@ -70,6 +67,7 @@ const DISPLAY_LIMIT_OPTIONS = [
 ];
 
 export default function LogsPage() {
+  const { toast } = useToast();
   const [logRetentionPeriod, setLogRetentionPeriod] = React.useState<string>(
     RETENTION_OPTIONS[1].value // Default to 7 days
   );
@@ -79,11 +77,13 @@ export default function LogsPage() {
   const [logs, setLogs] = React.useState<LogEntry[]>([]);
   const [selectedLog, setSelectedLog] = React.useState<LogEntry | null>(null);
   const [isModalOpen, setIsModalOpen] = React.useState(false);
+  const [isClearLogsDialogOpen, setIsClearLogsDialogOpen] = React.useState(false);
 
-  // Function to load logs and apply settings
+
   const loadAndSetLogs = React.useCallback(() => {
-    const allLogs = getLogs().sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()); // Ensure sorted by newest
+    const allLogs = getLogs().sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     setLogs(allLogs);
+    // addLog("LogsPage", "Logs loaded/reloaded.", "Debug"); // Avoid logging about logging itself too much
   }, []);
 
 
@@ -98,9 +98,15 @@ export default function LogsPage() {
     }
     loadAndSetLogs();
 
-    // Listen for custom event that logs might have been updated elsewhere
-    const handleLogsUpdated = () => loadAndSetLogs();
+    const handleLogsUpdated = () => {
+      // console.log("logsUpdated event received in LogsPage"); // For debugging
+      loadAndSetLogs();
+    };
     window.addEventListener('logsUpdated', handleLogsUpdated);
+    
+    // Initial log to confirm page load (optional)
+    // addLog("LogsPage", "Logs page initialized and event listener attached.", "Debug");
+
     return () => {
       window.removeEventListener('logsUpdated', handleLogsUpdated);
     };
@@ -109,13 +115,14 @@ export default function LogsPage() {
 
   React.useEffect(() => {
     localStorage.setItem("logRetentionPeriod", logRetentionPeriod);
+    addLog("LogsPage", `Log retention period set to: ${RETENTION_OPTIONS.find(o => o.value === logRetentionPeriod)?.label || logRetentionPeriod}.`, "Info");
     // Placeholder: In a real app, this change would trigger logic (e.g., via IPC to Electron main)
     // to schedule or perform log cleanup based on the new retention period.
-    // console.log(`Log retention period set to: ${logRetentionPeriod}. Implement backend cleanup logic.`);
   }, [logRetentionPeriod]);
 
   React.useEffect(() => {
     localStorage.setItem("displayLogLimit", displayLogLimit);
+    addLog("LogsPage", `Display log limit set to: ${DISPLAY_LIMIT_OPTIONS.find(o => o.value === displayLogLimit)?.label || displayLogLimit}.`, "Info");
     // No direct action needed here other than persisting, filtering is done by displayedLogs memo
   }, [displayLogLimit]);
 
@@ -132,18 +139,29 @@ export default function LogsPage() {
     setIsModalOpen(true);
   };
 
+  const handleClearAllLogs = () => {
+    clearLogs();
+    toast({
+      title: "Logs Cleared",
+      description: "All activity logs have been deleted.",
+    });
+    setIsClearLogsDialogOpen(false); 
+    loadAndSetLogs(); // Refresh the view
+    addLog("LogsPage", "All activity logs were manually cleared by the user.", "Info");
+  };
+
   const getBadgeVariant = (status: LogEntryStatus): { variant: "default" | "destructive" | "secondary" | "outline", className?: string } => {
     switch (status) {
       case 'Success':
-        return { variant: 'default', className: 'bg-green-100 hover:bg-green-200 text-green-800 border border-green-300' };
+        return { variant: 'default', className: 'bg-green-100 hover:bg-green-200 text-green-800 border border-green-300 dark:bg-green-700/30 dark:text-green-300 dark:border-green-600 dark:hover:bg-green-700/50' };
       case 'Error':
-        return { variant: 'destructive', className: 'bg-red-100 hover:bg-red-200 text-red-800 border border-red-300' }; // Destructive usually has its own distinct styling
+        return { variant: 'destructive', className: 'bg-red-100 hover:bg-red-200 text-red-800 border border-red-300 dark:bg-red-700/30 dark:text-red-300 dark:border-red-600 dark:hover:bg-red-700/50' };
       case 'Info':
-        return { variant: 'secondary', className: 'bg-blue-100 hover:bg-blue-200 text-blue-800 border border-blue-300' };
+        return { variant: 'secondary', className: 'bg-blue-100 hover:bg-blue-200 text-blue-800 border border-blue-300 dark:bg-blue-700/30 dark:text-blue-300 dark:border-blue-600 dark:hover:bg-blue-700/50' };
       case 'Debug':
-        return { variant: 'outline', className: 'bg-gray-100 hover:bg-gray-200 text-gray-800 border border-gray-300' };
+        return { variant: 'outline', className: 'bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300 dark:bg-gray-700/30 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700/50' };
       default:
-        return { variant: 'outline' };
+        return { variant: 'outline', className: 'dark:text-gray-400 dark:border-gray-600' };
     }
   };
   
@@ -154,7 +172,7 @@ export default function LogsPage() {
         <CardHeader className="border-b">
           <CardTitle className="font-headline text-xl">Log Settings</CardTitle>
           <CardDescription>
-            Configure log retention and display preferences. Log deletion based on retention period requires a background process.
+            Configure log retention, display preferences, and manage stored logs. Log deletion based on retention period requires a background process.
           </CardDescription>
         </CardHeader>
         <CardContent className="pt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -203,10 +221,34 @@ export default function LogsPage() {
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              Controls the number of recent log entries shown below.
+              Controls the number of recent log entries shown below. Select "All Logs" to show everything (may impact performance).
             </p>
           </div>
         </CardContent>
+         <CardFooter className="border-t pt-6">
+          <AlertDialog open={isClearLogsDialogOpen} onOpenChange={setIsClearLogsDialogOpen}>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive">
+                <Trash2 className="mr-2 h-4 w-4" /> Delete All Activity Logs
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This action cannot be undone. This will permanently delete all
+                  activity logs stored in your browser.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={handleClearAllLogs} className="bg-destructive hover:bg-destructive/90">
+                  Yes, delete all logs
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </CardFooter>
       </Card>
 
       <Card className="flex-1 flex flex-col overflow-hidden shadow-lg rounded-lg">
@@ -228,13 +270,13 @@ export default function LogsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {displayedLogs.map((log) => {
+                {displayedLogs.length > 0 ? displayedLogs.map((log) => {
                   const badgeStyle = getBadgeVariant(log.status);
                   return (
                     <TableRow
                       key={log.id}
                       onClick={() => handleRowClick(log)}
-                      className="cursor-pointer hover:bg-muted/50"
+                      className="cursor-pointer hover:bg-muted/50 dark:hover:bg-muted/20"
                     >
                       <TableCell className="p-4 whitespace-nowrap">
                         {new Date(log.timestamp).toLocaleString()}
@@ -242,7 +284,7 @@ export default function LogsPage() {
                       <TableCell className="p-4 whitespace-nowrap">
                         {log.source}
                       </TableCell>
-                      <TableCell className="p-4 truncate max-w-md" title={log.message}>
+                      <TableCell className="p-4 truncate max-w-xs md:max-w-md lg:max-w-lg xl:max-w-xl" title={log.message}>
                         {log.message}
                       </TableCell>
                       <TableCell className="p-4 whitespace-nowrap text-right">
@@ -252,12 +294,11 @@ export default function LogsPage() {
                       </TableCell>
                     </TableRow>
                   );
-                })}
-                {displayedLogs.length === 0 && (
+                }) : (
                   <TableRow>
                     <TableCell
                       colSpan={4}
-                      className="text-center p-8 text-muted-foreground"
+                      className="text-center p-8 text-muted-foreground h-48"
                     >
                       No logs available yet, or all logs have been filtered based on current settings.
                     </TableCell>
@@ -282,3 +323,21 @@ export default function LogsPage() {
     </div>
   );
 }
+
+// Conceptual Table Schemas for SQLite (to be managed by a backend/Electron main process):
+//
+// logs table:
+//   id INTEGER PRIMARY KEY AUTOINCREMENT,
+//   timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, (Should store as ISO8601 string or Unix timestamp)
+//   source TEXT,
+//   message TEXT,
+//   status TEXT CHECK(status IN ('Success', 'Error', 'Info', 'Debug'))
+//
+// attendance_transactions table:
+//   id INTEGER PRIMARY KEY AUTOINCREMENT,
+//   employee_id TEXT NOT NULL,
+//   transaction_type TEXT CHECK(transaction_type IN ('check-in', 'check-out')) NOT NULL,
+//   transaction_time DATETIME NOT NULL, (Should store as ISO8601 string or Unix timestamp)
+//   source_type TEXT DEFAULT 'biometric',
+//   device_id TEXT,
+//   status TEXT CHECK(status IN ('not_uploaded', 'uploaded')) DEFAULT 'not_uploaded'

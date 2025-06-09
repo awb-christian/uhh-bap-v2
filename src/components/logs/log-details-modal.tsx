@@ -13,7 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+// import { Textarea } from "@/components/ui/textarea"; // Replaced with div/pre for scrollbar consistency
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import type { LogEntry } from "@/lib/app-logger";
@@ -82,13 +82,12 @@ export function LogDetailsModal({ log, isOpen, onClose }: LogDetailsModalProps) 
             <Label htmlFor="message" className="text-right pt-2">
               Message
             </Label>
-            <ScrollArea className="col-span-3 h-48 rounded-md border">
-              <Textarea
-                id="message"
-                value={log.message}
-                readOnly
-                className="h-full resize-none border-0 focus-visible:ring-0 p-2"
-              />
+            <ScrollArea className="col-span-3 h-48 rounded-md border bg-muted/20 dark:bg-muted/50">
+              <div className="p-2 h-full">
+                <pre className="text-sm whitespace-pre-wrap break-all font-mono h-full">
+                  {log.message}
+                </pre>
+              </div>
             </ScrollArea>
           </div>
         </div>
@@ -103,3 +102,4 @@ export function LogDetailsModal({ log, isOpen, onClose }: LogDetailsModalProps) 
     </Dialog>
   );
 }
+
