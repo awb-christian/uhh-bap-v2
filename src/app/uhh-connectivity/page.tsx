@@ -34,15 +34,18 @@ interface UhhAuthResponse {
   };
 }
 
-// Function to handle UHH connection test and authentication
+// Function to handle UHH connection test and authentication via proxy
 async function testUhhConnection(
-  url: string,
+  uhhBaseUrl: string, // Base URL like https://your-odoo-instance.com
   username: string,
   password: string,
   dbName: string
 ): Promise<{ success: boolean; message: string; sessionId?: string }> {
-  const endpoint = `${url.replace(/\/$/, "")}/web/session/authenticate`;
-  const requestBody = {
+  // The actual Odoo authentication endpoint path
+  const authPath = "/web/session/authenticate";
+  const odooFullAuthUrl = `${uhhBaseUrl.replace(/\/$/, "")}${authPath}`;
+
+  const odooPayload = {
     jsonrpc: "2.0",
     params: {
       login: username,
@@ -52,23 +55,28 @@ async function testUhhConnection(
   };
 
   try {
-    const response = await fetch(endpoint, {
+    // Request to our Next.js proxy API route
+    const proxyResponse = await fetch("/api/uhh-proxy", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(requestBody),
+      body: JSON.stringify({
+        targetUrl: odooFullAuthUrl, // Send the full target URL to the proxy
+        payload: odooPayload,      // Send the Odoo specific payload
+      }),
     });
 
-    if (!response.ok) {
-      // Handles HTTP errors like 404, 500, etc.
+    if (!proxyResponse.ok) {
+      // Handles HTTP errors from the proxy itself or forwarded from Odoo
+      const errorData = await proxyResponse.json().catch(() => ({})); // Try to get error details
       return {
         success: false,
-        message: `Server error: ${response.status} ${response.statusText}. Please check the UHH URL and server status.`,
+        message: `Proxy or Server error: ${proxyResponse.status} ${proxyResponse.statusText}. ${errorData.message || errorData.details || ""}`.trim(),
       };
     }
 
-    const responseData: UhhAuthResponse = await response.json();
+    const responseData: UhhAuthResponse = await proxyResponse.json();
 
     if (responseData.error) {
       // Odoo specific error (e.g., wrong credentials)
@@ -80,12 +88,12 @@ async function testUhhConnection(
 
     if (responseData.result && responseData.result.session_id) {
       localStorage.setItem("uhh_session_id", responseData.result.session_id);
-      localStorage.setItem("uhh_user_details", JSON.stringify({ 
-        uid: responseData.result.uid, 
-        name: responseData.result.name, 
+      localStorage.setItem("uhh_user_details", JSON.stringify({
+        uid: responseData.result.uid,
+        name: responseData.result.name,
         username: responseData.result.username,
         db: dbName,
-        url: url,
+        url: uhhBaseUrl, // Store the base URL
       }));
       return {
         success: true,
@@ -100,12 +108,10 @@ async function testUhhConnection(
     };
 
   } catch (error) {
-    // Network errors or other issues with the fetch call
-    console.error("UHH Connection test error:", error);
-    let errorMessage = "Connection failed. Please check your network and the UHH URL.";
-    if (error instanceof Error && error.message.includes('Failed to fetch')) {
-        errorMessage = `Connection failed: Could not reach the server at ${url}. Ensure the URL is correct and the server is accessible.`;
-    } else if (error instanceof Error) {
+    // Network errors or other issues with the fetch call to the proxy
+    console.error("UHH Connection test error (via proxy):", error);
+    let errorMessage = "Connection failed. Please check your network.";
+    if (error instanceof Error) {
         errorMessage = `Connection error: ${error.message}`;
     }
     return { success: false, message: errorMessage };
@@ -115,7 +121,7 @@ async function testUhhConnection(
 
 export default function UhhConnectivityPage() {
   const { toast } = useToast();
-  const [uhhUrl, setUhhUrl] = React.useState("");
+  const [uhhUrl, setUhhUrl] = React.useState(""); // This will now store the base URL
   const [username, setUsername] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [dbName, setDbName] = React.useState("");
@@ -132,15 +138,19 @@ export default function UhhConnectivityPage() {
           sessionId: storedSessionId,
           user: userDetails.name || userDetails.username || "Unknown User",
           db: userDetails.db || "N/A",
-          url: userDetails.url || "N/A",
+          url: userDetails.url || "N/A", // This is the base URL
         });
+        // Pre-fill inputs if session exists, useful if user wants to re-auth with same details
+        setUhhUrl(userDetails.url || "");
+        setUsername(userDetails.username || "");
+        setDbName(userDetails.db || "");
+
       } catch (e) {
         console.error("Failed to parse stored user details", e);
         localStorage.removeItem("uhh_session_id");
         localStorage.removeItem("uhh_user_details");
       }
     } else {
-      // Ensure any partial stored data is cleared if one part is missing
       localStorage.removeItem("uhh_session_id");
       localStorage.removeItem("uhh_user_details");
     }
@@ -151,11 +161,11 @@ export default function UhhConnectivityPage() {
   const handleTestConnection = async () => {
     if (!canTestConnection) return;
     setIsLoading(true);
-    
+
     const result = await testUhhConnection(uhhUrl, username, password, dbName);
-    
+
     setIsLoading(false);
-    
+
     toast({
       title: result.success ? "Success" : "Error",
       description: result.message,
@@ -165,14 +175,15 @@ export default function UhhConnectivityPage() {
     if (result.success && result.sessionId) {
         setActiveSession({
             sessionId: result.sessionId,
-            user: username, // Or fetch actual name if API provides it and you store it
+            user: JSON.parse(localStorage.getItem("uhh_user_details") || "{}").name || username,
             db: dbName,
             url: uhhUrl,
         });
     } else if (!result.success) {
-        setActiveSession(null); // Clear active session on failure
-        localStorage.removeItem("uhh_session_id");
-        localStorage.removeItem("uhh_user_details");
+        // Do not clear localStorage here, user might want to retry with corrected password on same URL/DB
+        // localStorage.removeItem("uhh_session_id");
+        // localStorage.removeItem("uhh_user_details");
+        setActiveSession(null); // Clear active session display on failure
     }
   };
 
@@ -180,6 +191,11 @@ export default function UhhConnectivityPage() {
     localStorage.removeItem("uhh_session_id");
     localStorage.removeItem("uhh_user_details");
     setActiveSession(null);
+    // Optionally clear input fields on logout
+    // setUhhUrl("");
+    // setUsername("");
+    // setPassword("");
+    // setDbName("");
     toast({
       title: "Logged Out",
       description: "UHH session has been cleared.",
@@ -225,10 +241,10 @@ export default function UhhConnectivityPage() {
 
         <div className="space-y-4">
           <div>
-            <Label htmlFor="uhh-url">UHH URL</Label>
-            <Input 
-              id="uhh-url" 
-              placeholder="e.g., https://your-odoo-instance.com" 
+            <Label htmlFor="uhh-url">UHH URL (Base)</Label>
+            <Input
+              id="uhh-url"
+              placeholder="e.g., https://your-odoo-instance.com"
               value={uhhUrl}
               onChange={(e) => setUhhUrl(e.target.value)}
               disabled={isLoading || !!activeSession}
@@ -236,9 +252,9 @@ export default function UhhConnectivityPage() {
           </div>
           <div>
             <Label htmlFor="username">Username</Label>
-            <Input 
-              id="username" 
-              placeholder="Enter your UHH username (e.g., email)" 
+            <Input
+              id="username"
+              placeholder="Enter your UHH username (e.g., email)"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               disabled={isLoading || !!activeSession}
@@ -246,10 +262,10 @@ export default function UhhConnectivityPage() {
           </div>
           <div>
             <Label htmlFor="password">Password</Label>
-            <Input 
-              id="password" 
-              type="password" 
-              placeholder="Enter your UHH password" 
+            <Input
+              id="password"
+              type="password"
+              placeholder="Enter your UHH password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               disabled={isLoading || !!activeSession}
@@ -257,20 +273,20 @@ export default function UhhConnectivityPage() {
           </div>
           <div>
             <Label htmlFor="db-name">Database Name</Label>
-            <Input 
-              id="db-name" 
-              placeholder="Enter the UHH database name" 
+            <Input
+              id="db-name"
+              placeholder="Enter the UHH database name"
               value={dbName}
               onChange={(e) => setDbName(e.target.value)}
               disabled={isLoading || !!activeSession}
             />
           </div>
         </div>
-        
+
         {!activeSession && (
             <div className="flex justify-end">
-            <Button 
-                onClick={handleTestConnection} 
+            <Button
+                onClick={handleTestConnection}
                 disabled={!canTestConnection || isLoading}
                 className="bg-primary hover:bg-primary/90 text-primary-foreground"
             >
@@ -279,7 +295,7 @@ export default function UhhConnectivityPage() {
             </Button>
             </div>
         )}
-        
+
       </CardContent>
     </Card>
   );
