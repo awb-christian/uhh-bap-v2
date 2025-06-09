@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area"; // Added import
 import { Network, Loader2, CheckCircle, XCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -13,11 +14,11 @@ interface UhhAuthResponseResult {
   session_id: string;
   uid: number;
   is_admin?: boolean;
-  name?: string; 
-  username?: string; 
+  name?: string;
+  username?: string;
   partner_id?: number;
   company_id?: number;
-  db?: string; 
+  db?: string;
 }
 
 interface UhhAuthResponseErrorData {
@@ -29,7 +30,7 @@ interface UhhAuthResponseError {
     code: number;
     message: string;
     data?: UhhAuthResponseErrorData;
-    http_status?: number; 
+    http_status?: number;
 }
 
 interface UhhAuthResponse {
@@ -106,8 +107,8 @@ async function testUhhConnection(
       localStorage.setItem("uhh_user_details", JSON.stringify({
         uid: responseData.result.uid,
         name: responseData.result.name,
-        username: responseData.result.username, 
-        db: responseData.result.db || dbName, 
+        username: responseData.result.username,
+        db: responseData.result.db || dbName,
         url: uhhBaseUrl,
         isAdmin: responseData.result.is_admin,
         companyId: responseData.result.company_id,
@@ -152,17 +153,17 @@ export default function UhhConnectivityPage() {
     const storedSessionId = localStorage.getItem("uhh_session_id");
     const storedUserDetailsRaw = localStorage.getItem("uhh_user_details");
 
-    if (storedUserDetailsRaw) { 
+    if (storedUserDetailsRaw) {
       try {
         const userDetails = JSON.parse(storedUserDetailsRaw);
         setUhhUrl(userDetails.url || "");
-        setUsername(userDetails.username || ""); 
+        setUsername(userDetails.username || "");
         setDbName(userDetails.db || "");
-        
-        if (storedSessionId && userDetails.url && userDetails.username && userDetails.db) { 
+
+        if (storedSessionId && userDetails.url && userDetails.username && userDetails.db) {
           setActiveSession({
             sessionId: storedSessionId,
-            user: userDetails.name || userDetails.username || "Unknown User", 
+            user: userDetails.name || userDetails.username || "Unknown User",
             db: userDetails.db,
             url: userDetails.url,
           });
@@ -177,7 +178,7 @@ export default function UhhConnectivityPage() {
         setActiveSession(null);
       }
     } else {
-      localStorage.removeItem("uhh_session_id");
+      localStorage.removeItem("uhh_session_id"); // Also ensure session is cleared if no user details
       setActiveSession(null);
     }
   }, []);
@@ -202,13 +203,13 @@ export default function UhhConnectivityPage() {
     if (result.success && result.data) {
         setActiveSession({
             sessionId: result.data.session_id,
-            user: result.data.name || result.data.username || username, 
-            db: result.data.db || dbName, 
+            user: result.data.name || result.data.username || username,
+            db: result.data.db || dbName,
             url: uhhUrl,
         });
         setPassword("");
     } else if (!result.success) {
-        setActiveSession(null); 
+        setActiveSession(null);
         setPassword("");
     }
   };
@@ -216,7 +217,7 @@ export default function UhhConnectivityPage() {
   const handleLogout = () => {
     localStorage.removeItem("uhh_session_id");
     setActiveSession(null);
-    setPassword(""); 
+    setPassword("");
     setDebugHeaders(null); // Clear debug headers on logout
     toast({
       title: "Logged Out",
