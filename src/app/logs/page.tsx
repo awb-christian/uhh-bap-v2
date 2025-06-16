@@ -43,10 +43,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { LogDetailsModal } from "@/components/logs/log-details-modal";
-import type { LogEntry, LogEntryStatus } from "@/lib/app-logger"; 
-import { getLogs, clearLogs, addLog, applyRetentionPolicy } from "@/lib/app-logger"; 
+import type { LogEntry, LogEntryStatus } from "@/lib/app-logger";
+import { getLogs, clearLogs, addLog, applyRetentionPolicy } from "@/lib/app-logger";
 import { useToast } from "@/hooks/use-toast";
-import { Trash2 } from "lucide-react";
+import { Trash2, FilterX } from "lucide-react";
 
 
 const RETENTION_OPTIONS = [
@@ -58,26 +58,42 @@ const RETENTION_OPTIONS = [
   { value: "never", label: "Never Delete" },
 ];
 
-const DISPLAY_LIMIT_OPTIONS = [
-  { value: "20", label: "20 Logs" },
-  { value: "50", label: "50 Logs" },
-  { value: "100", label: "100 Logs" },
-  { value: "200", label: "200 Logs" },
-  { value: "all", label: "All Logs" },
+const LOGS_PER_PAGE_OPTIONS = [
+  { value: "20", label: "20 per page" },
+  { value: "50", label: "50 per page" },
+  { value: "100", label: "100 per page" },
+  { value: "200", label: "200 per page" },
+  { value: "all", label: "Show All" },
 ];
 
-// For production with larger datasets, logs should be managed in a SQLite database
-// via Electron's main process to avoid localStorage performance limitations.
+const STATUS_FILTER_OPTIONS: { value: LogEntryStatus | "all"; label: string }[] = [
+    { value: "all", label: "All Statuses" },
+    { value: "Success", label: "Success" },
+    { value: "Error", label: "Error" },
+    { value: "Info", label: "Info" },
+    { value: "Debug", label: "Debug" },
+];
+
 
 export default function LogsPage() {
   const { toast } = useToast();
+  const [allLogs, setAllLogs] = React.useState<LogEntry[]>([]);
+  
+  // Settings
   const [logRetentionPeriod, setLogRetentionPeriod] = React.useState<string>(
     RETENTION_OPTIONS[1].value // Default to 7 days
   );
-  const [displayLogLimit, setDisplayLogLimit] = React.useState<string>(
-    DISPLAY_LIMIT_OPTIONS[1].value // Default to 50 logs
+  
+  // Filters
+  const [sourceFilter, setSourceFilter] = React.useState<string>("all");
+  const [statusFilter, setStatusFilter] = React.useState<LogEntryStatus | "all">("all");
+  
+  // Pagination & Display
+  const [logsPerPage, setLogsPerPage] = React.useState<string>(
+    LOGS_PER_PAGE_OPTIONS[1].value // Default to 50 logs
   );
-  const [logs, setLogs] = React.useState<LogEntry[]>([]);
+  const [currentPage, setCurrentPage] = React.useState(1);
+
   const [selectedLog, setSelectedLog] = React.useState<LogEntry | null>(null);
   const [isModalOpen, setIsModalOpen] = React.useState(false);
   const [isClearLogsDialogOpen, setIsClearLogsDialogOpen] = React.useState(false);
@@ -85,64 +101,85 @@ export default function LogsPage() {
 
 
   const loadAndSetLogs = React.useCallback(() => {
-    const allLogs = getLogs().sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    setLogs(allLogs);
+    const logsData = getLogs().sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    setAllLogs(logsData);
   }, []);
 
-
   React.useEffect(() => {
-    // Load settings from localStorage or set defaults
     const storedRetention = localStorage.getItem("logRetentionPeriod");
     if (storedRetention && RETENTION_OPTIONS.find(opt => opt.value === storedRetention)) {
       setLogRetentionPeriod(storedRetention);
     } else {
-      localStorage.setItem("logRetentionPeriod", RETENTION_OPTIONS[1].value); 
+      localStorage.setItem("logRetentionPeriod", RETENTION_OPTIONS[1].value);
       setLogRetentionPeriod(RETENTION_OPTIONS[1].value);
     }
 
-    const storedLimit = localStorage.getItem("displayLogLimit");
-    if (storedLimit && DISPLAY_LIMIT_OPTIONS.find(opt => opt.value === storedLimit)) {
-      setDisplayLogLimit(storedLimit);
+    const storedLogsPerPage = localStorage.getItem("logsPerPage");
+    if (storedLogsPerPage && LOGS_PER_PAGE_OPTIONS.find(opt => opt.value === storedLogsPerPage)) {
+      setLogsPerPage(storedLogsPerPage);
     } else {
-      localStorage.setItem("displayLogLimit", DISPLAY_LIMIT_OPTIONS[1].value); 
-      setDisplayLogLimit(DISPLAY_LIMIT_OPTIONS[1].value);
+      localStorage.setItem("logsPerPage", LOGS_PER_PAGE_OPTIONS[1].value);
+      setLogsPerPage(LOGS_PER_PAGE_OPTIONS[1].value);
     }
-    setSettingsInitialized(true); 
+    setSettingsInitialized(true);
     loadAndSetLogs();
 
-    // Listen for log updates from other parts of the app
     const handleLogsUpdated = () => loadAndSetLogs();
     window.addEventListener('logsUpdated', handleLogsUpdated);
     
     return () => {
       window.removeEventListener('logsUpdated', handleLogsUpdated);
     };
-
   }, [loadAndSetLogs]);
 
   React.useEffect(() => {
-    if (!settingsInitialized) return; 
-    // Only log and apply policy if the value actually changed by user interaction, not initial load
-    // This check is implicit if settingsInitialized is true *after* initial load effect.
+    if (!settingsInitialized) return;
     localStorage.setItem("logRetentionPeriod", logRetentionPeriod);
-    applyRetentionPolicy(logRetentionPeriod); 
-    // addLog("LogsPage", `Log retention period set to: ${RETENTION_OPTIONS.find(o => o.value === logRetentionPeriod)?.label || logRetentionPeriod}.`, "Info");
+    applyRetentionPolicy(logRetentionPeriod);
   }, [logRetentionPeriod, settingsInitialized]);
 
   React.useEffect(() => {
     if (!settingsInitialized) return;
-    // Only log if the value actually changed by user interaction
-    localStorage.setItem("displayLogLimit", displayLogLimit);
-    // addLog("LogsPage", `Display log limit set to: ${DISPLAY_LIMIT_OPTIONS.find(o => o.value === displayLogLimit)?.label || displayLogLimit}.`, "Info");
-  }, [displayLogLimit, settingsInitialized]);
+    localStorage.setItem("logsPerPage", logsPerPage);
+    setCurrentPage(1); // Reset to first page when logs per page changes
+  }, [logsPerPage, settingsInitialized]);
+  
+  React.useEffect(() => {
+    setCurrentPage(1); // Reset to first page when filters change
+  }, [sourceFilter, statusFilter]);
 
-  const displayedLogs = React.useMemo(() => {
-    const limit = parseInt(displayLogLimit, 10);
-    if (isNaN(limit) || displayLogLimit === "all") { 
-      return logs;
-    }
-    return logs.slice(0, limit);
-  }, [logs, displayLogLimit]);
+
+  const uniqueLogSources = React.useMemo(() => {
+    const sources = new Set(allLogs.map(log => log.source));
+    return ["all", ...Array.from(sources)].map(source => ({
+      value: source,
+      label: source === "all" ? "All Sources" : source,
+    }));
+  }, [allLogs]);
+
+  const filteredLogs = React.useMemo(() => {
+    return allLogs.filter(log => {
+      const matchesSource = sourceFilter === "all" || log.source === sourceFilter;
+      const matchesStatus = statusFilter === "all" || log.status === statusFilter;
+      return matchesSource && matchesStatus;
+    });
+  }, [allLogs, sourceFilter, statusFilter]);
+
+  const numLogsPerPage = parseInt(logsPerPage, 10);
+  const showAllLogs = logsPerPage === "all";
+
+  const totalPages = React.useMemo(() => {
+    if (showAllLogs || filteredLogs.length === 0) return 1;
+    return Math.max(1, Math.ceil(filteredLogs.length / numLogsPerPage));
+  }, [filteredLogs.length, numLogsPerPage, showAllLogs]);
+
+  const paginatedLogs = React.useMemo(() => {
+    if (showAllLogs) return filteredLogs;
+    const startIndex = (currentPage - 1) * numLogsPerPage;
+    const endIndex = startIndex + numLogsPerPage;
+    return filteredLogs.slice(startIndex, endIndex);
+  }, [filteredLogs, currentPage, numLogsPerPage, showAllLogs]);
+
 
   const handleRowClick = (log: LogEntry) => {
     setSelectedLog(log);
@@ -150,13 +187,20 @@ export default function LogsPage() {
   };
 
   const handleClearAllLogs = () => {
-    clearLogs(); 
+    clearLogs();
     toast({
       title: "Logs Cleared",
       description: "All activity logs have been deleted.",
     });
-    setIsClearLogsDialogOpen(false); 
+    setIsClearLogsDialogOpen(false);
     addLog("LogsPage", "All activity logs were manually cleared by the user.", "Info");
+  };
+  
+  const handleResetFilters = () => {
+    setSourceFilter("all");
+    setStatusFilter("all");
+    toast({ title: "Filters Reset", description: "Source and Status filters have been cleared." });
+    addLog("LogsPage", "Log filters (source, status) reset.", "Info");
   };
 
   const getBadgeVariant = (status: LogEntryStatus): { variant: "default" | "destructive" | "secondary" | "outline", className?: string } => {
@@ -179,12 +223,12 @@ export default function LogsPage() {
     <div className="flex flex-col h-full space-y-6">
       <Card className="shadow-lg rounded-lg">
         <CardHeader className="border-b">
-          <CardTitle className="font-headline text-xl">Log Settings</CardTitle>
+          <CardTitle className="font-headline text-xl">Log Configuration & Filters</CardTitle>
           <CardDescription>
-            Configure log retention and display preferences.
+            Manage log retention, display, and apply filters to refine the log view.
           </CardDescription>
         </CardHeader>
-        <CardContent className="pt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+        <CardContent className="pt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-end">
           <div className="space-y-2">
             <Label htmlFor="log-retention">Log Retention Period</Label>
             <Select
@@ -194,7 +238,7 @@ export default function LogsPage() {
                 addLog("LogsPage", `Log retention period set to: ${RETENTION_OPTIONS.find(o => o.value === value)?.label || value}.`, "Info");
               }}
             >
-              <SelectTrigger id="log-retention" className="w-full">
+              <SelectTrigger id="log-retention">
                 <SelectValue placeholder="Select retention period" />
               </SelectTrigger>
               <SelectContent>
@@ -208,27 +252,27 @@ export default function LogsPage() {
                 </SelectGroup>
               </SelectContent>
             </Select>
-            <p className="text-xs text-muted-foreground">
-              {/* TODO: [Electron Main Process] Implement actual log cleanup based on retention period in main process (e.g., for SQLite). */}
-              Select how long logs should be kept. Older logs will be periodically deleted. (Actual deletion requires main process implementation).
+             <p className="text-xs text-muted-foreground">
+              Logs older than this will be periodically deleted. (Requires main process implementation for robust deletion).
             </p>
           </div>
+
           <div className="space-y-2">
-            <Label htmlFor="display-limit">Show recent logs:</Label>
+            <Label htmlFor="log-source-filter">Filter by Source</Label>
             <Select
-              value={displayLogLimit}
+              value={sourceFilter}
               onValueChange={(value) => {
-                setDisplayLogLimit(value);
-                addLog("LogsPage", `Display log limit set to: ${DISPLAY_LIMIT_OPTIONS.find(o => o.value === value)?.label || value}.`, "Info");
+                  setSourceFilter(value);
+                  addLog("LogsPage", `Filter by source: ${value}`, "Debug");
               }}
             >
-              <SelectTrigger id="display-limit" className="w-full">
-                <SelectValue placeholder="Select display limit" />
+              <SelectTrigger id="log-source-filter">
+                <SelectValue placeholder="Select source" />
               </SelectTrigger>
               <SelectContent>
                 <SelectGroup>
-                  <SelectLabel>Display Limit</SelectLabel>
-                  {DISPLAY_LIMIT_OPTIONS.map((option) => (
+                  <SelectLabel>Source</SelectLabel>
+                  {uniqueLogSources.map((option) => (
                     <SelectItem key={option.value} value={option.value}>
                       {option.label}
                     </SelectItem>
@@ -236,12 +280,41 @@ export default function LogsPage() {
                 </SelectGroup>
               </SelectContent>
             </Select>
-            <p className="text-xs text-muted-foreground">
-              Controls the number of recent log entries shown below. Select "All Logs" to show everything (may impact performance with very large log sets if not using a virtualized list).
-            </p>
           </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="log-status-filter">Filter by Status</Label>
+            <Select
+              value={statusFilter}
+              onValueChange={(value) => {
+                  setStatusFilter(value as LogEntryStatus | "all");
+                  addLog("LogsPage", `Filter by status: ${value}`, "Debug");
+              }}
+            >
+              <SelectTrigger id="log-status-filter">
+                <SelectValue placeholder="Select status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectLabel>Status</SelectLabel>
+                  {STATUS_FILTER_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </div>
+          
+          <div className="flex items-end">
+              <Button onClick={handleResetFilters} variant="outline" className="w-full">
+                  <FilterX className="mr-2 h-4 w-4" /> Reset Filters
+              </Button>
+          </div>
+
         </CardContent>
-         <CardFooter className="border-t pt-6">
+         <CardFooter className="border-t pt-6 flex justify-between items-center">
           <AlertDialog open={isClearLogsDialogOpen} onOpenChange={setIsClearLogsDialogOpen}>
             <AlertDialogTrigger asChild>
               <Button variant="destructive">
@@ -271,7 +344,9 @@ export default function LogsPage() {
         <CardHeader className="border-b">
           <CardTitle className="font-headline text-2xl">Activity Logs</CardTitle>
           <CardDescription>
-            System activity, data synchronization, and request logs. Click a row to view details. Currently showing {displayedLogs.length} of {logs.length} logs.
+            System activity, data synchronization, and request logs. Click a row to view details.
+            Showing {paginatedLogs.length} of {filteredLogs.length} filtered logs.
+            {!showAllLogs && ` (Page ${currentPage} of ${totalPages})`}
           </CardDescription>
         </CardHeader>
         <CardContent className="flex-1 overflow-y-auto p-0">
@@ -286,7 +361,7 @@ export default function LogsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {displayedLogs.length > 0 ? displayedLogs.map((log) => {
+                {paginatedLogs.length > 0 ? paginatedLogs.map((log) => {
                   const badgeStyle = getBadgeVariant(log.status);
                   return (
                     <TableRow
@@ -316,7 +391,7 @@ export default function LogsPage() {
                       colSpan={4}
                       className="text-center p-8 text-muted-foreground h-48"
                     >
-                      No logs available yet, or all logs have been filtered based on current settings.
+                      {allLogs.length > 0 ? "No logs found matching your criteria." : "No logs available yet."}
                     </TableCell>
                   </TableRow>
                 )}
@@ -324,6 +399,55 @@ export default function LogsPage() {
             </Table>
           </ScrollArea>
         </CardContent>
+        <CardFooter className="border-t pt-4 pb-4 flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+                <Label htmlFor="logsPerPage" className="text-sm">Logs per page:</Label>
+                <Select
+                value={logsPerPage}
+                onValueChange={(value) => {
+                    setLogsPerPage(value);
+                    addLog("LogsPage", `Logs per page set to: ${LOGS_PER_PAGE_OPTIONS.find(o => o.value === value)?.label || value}.`, "Info");
+                }}
+                >
+                <SelectTrigger id="logsPerPage" className="w-[140px] h-9">
+                    <SelectValue placeholder="Select count" />
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectGroup>
+                        <SelectLabel>Display Limit</SelectLabel>
+                        {LOGS_PER_PAGE_OPTIONS.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                            </SelectItem>
+                        ))}
+                    </SelectGroup>
+                </SelectContent>
+                </Select>
+            </div>
+            {!showAllLogs && filteredLogs.length > 0 && (
+                <div className="flex items-center space-x-2">
+                    <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                    disabled={currentPage === 1}
+                    >
+                    Previous
+                    </Button>
+                    <span className="text-sm text-muted-foreground">
+                    Page {currentPage} of {totalPages}
+                    </span>
+                    <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                    disabled={currentPage === totalPages}
+                    >
+                    Next
+                    </Button>
+                </div>
+            )}
+        </CardFooter>
       </Card>
 
       {selectedLog && (
@@ -339,27 +463,3 @@ export default function LogsPage() {
     </div>
   );
 }
-
-// Conceptual Table Schemas for SQLite (to be managed by Electron main process):
-//
-// logs table:
-//   id TEXT PRIMARY KEY, -- Using UUID or similar text-based ID from client
-//   timestamp TEXT NOT NULL, -- ISO8601 string
-//   source TEXT,
-//   message TEXT,
-//   status TEXT CHECK(status IN ('Success', 'Error', 'Info', 'Debug'))
-//
-// attendance_transactions table:
-//   id TEXT PRIMARY KEY, -- Using UUID or similar
-//   employee_id TEXT NOT NULL,
-//   transaction_type TEXT CHECK(transaction_type IN ('check-in', 'check-out')) NOT NULL,
-//   transaction_time TEXT NOT NULL, -- ISO8601 string
-//   source_type TEXT DEFAULT 'biometric',
-//   device_id TEXT,
-//   status TEXT CHECK(status IN ('not_uploaded', 'uploaded')) DEFAULT 'not_uploaded'
-//
-// Note: For timestamp/datetime fields, storing as ISO8601 strings (TEXT) is often easier
-// for interoperability than Unix timestamps (INTEGER) when dealing with timezones,
-// especially if the client and server are in different timezones. SQLite can handle
-// date functions on ISO8601 strings.
-    
