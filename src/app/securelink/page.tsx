@@ -21,6 +21,7 @@ import { format, parseISO, setHours, setMinutes, setSeconds, setMilliseconds, is
 // - MDB file access (reading, querying) MUST be done in Electron's main process using a library like 'node-adodb'.
 // - The frontend (this Next.js page) would use Electron IPC to send requests to the main process and receive data.
 // - Storing the MDB password directly in localStorage is NOT secure for production. Use Electron's 'safeStorage' in the main process.
+// TODO: [Electron Main Process] Replace all `localStorage` access for sensitive MDB details with IPC calls to Electron's main process for secure storage and file operations.
 
 const FETCH_FREQUENCY_OPTIONS = [
   { value: "30m", label: "Every 30 minutes" },
@@ -49,12 +50,14 @@ export default function SecureLinkPage() {
   React.useEffect(() => {
     addLog("SecureLinkPage", "Page loaded. Initializing settings from localStorage.", "Debug");
     const savedFileName = localStorage.getItem("securelink_mdbFileName");
-    const savedPassword = localStorage.getItem("securelink_password"); // WARNING: Insecure for production
+    // WARNING: Loading passwords from localStorage is insecure for production.
+    // TODO: [Electron Main Process] Replace with secure loading mechanism if password needs to be persisted.
+    const savedPassword = localStorage.getItem("securelink_password"); 
     const savedFetchFrequency = localStorage.getItem("securelink_fetchFrequency");
     const savedFetchUpToDateTime = localStorage.getItem("securelink_fetchUpToDateTime");
 
     if (savedFileName) setMdbFileName(savedFileName);
-    if (savedPassword) setPassword(savedPassword); // WARNING: Insecure
+    if (savedPassword) setPassword(savedPassword); 
     if (savedFetchFrequency && FETCH_FREQUENCY_OPTIONS.find(opt => opt.value === savedFetchFrequency)) {
       setFetchFrequency(savedFetchFrequency);
     }
@@ -71,7 +74,6 @@ export default function SecureLinkPage() {
         } catch (e) {
             console.error("Failed to parse fetchUpToDateTime from localStorage", e);
             addLog("SecureLinkPage", `Failed to parse 'fetchUpToDateTime' from localStorage. Error: ${e instanceof Error ? e.message : String(e)}`, "Error");
-            // Optionally reset to default if parsing fails
             localStorage.removeItem("securelink_fetchUpToDateTime"); 
         }
     }
@@ -81,17 +83,16 @@ export default function SecureLinkPage() {
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file && file.name.toLowerCase().endsWith(".mdb")) {
-      setMdbFile(file); // Store File object temporarily if needed by Electron IPC later (e.g., for path or stream)
+      // TODO: [Electron Main Process] Send file path (file.path) to main process via IPC instead of just name for actual file access.
+      setMdbFile(file); 
       setMdbFileName(file.name);
       localStorage.setItem("securelink_mdbFileName", file.name);
       setDebugOutput("");
-      setIsConnected(false); // Reset connection status on new file selection
-      addLog("SecureLinkPage", `MDB file selected: ${file.name}`, "Info");
+      setIsConnected(false);
+      addLog("SecureLinkPage", `MDB file selected: ${file.name}. Full path (available in Electron context): ${file.path || "N/A in browser"}`, "Info");
     } else {
       setMdbFile(null);
-      // Do not clear mdbFileName if a file was previously selected and stored
-      // localStorage.removeItem("securelink_mdbFileName"); 
-      if (file) { // Only show toast if a file was actually selected but was invalid
+      if (file) { 
         toast({
           title: "Invalid File Type",
           description: "Please select a valid .mdb file.",
@@ -105,7 +106,8 @@ export default function SecureLinkPage() {
   const handlePasswordChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const newPassword = event.target.value;
     setPassword(newPassword);
-    // WARNING: Storing passwords in localStorage is insecure. For Electron, use safeStorage in the main process.
+    // WARNING: Storing passwords in localStorage is insecure.
+    // TODO: [Electron Main Process] For Electron, send password to main process via IPC to be stored using 'safeStorage'.
     localStorage.setItem("securelink_password", newPassword);
   };
   
@@ -116,9 +118,8 @@ export default function SecureLinkPage() {
   };
 
   const updateFetchUpToDateTime = React.useCallback((date?: Date, hour?: string, minute?: string) => {
-    const baseDate = date || fetchUpToDate || new Date(); // Ensure baseDate is always a valid Date
+    const baseDate = date || fetchUpToDate || new Date(); 
     
-    // Validate and parse hour/minute, defaulting to current if invalid
     let numHour = parseInt(hour || fetchUpToHour, 10);
     let numMinute = parseInt(minute || fetchUpToMinute, 10);
 
@@ -131,17 +132,14 @@ export default function SecureLinkPage() {
     newDateTime = setMilliseconds(newDateTime, 0);
     
     localStorage.setItem("securelink_fetchUpToDateTime", newDateTime.toISOString());
-    // No need to log here as it's called by useEffect which logs the final change
   }, [fetchUpToDate, fetchUpToHour, fetchUpToMinute]);
 
 
   React.useEffect(() => {
-    // This effect ensures that any change to date, hour, or minute updates the combined persisted value.
-    if (fetchUpToDate) { // Only update if date is set
+    if (fetchUpToDate) { 
         const currentHour = fetchUpToHour.padStart(2, '0');
         const currentMinute = fetchUpToMinute.padStart(2, '0');
         updateFetchUpToDateTime(fetchUpToDate, currentHour, currentMinute);
-        // Log the change when any part of date/time is modified by user
         addLog("SecureLinkPage", `Fetch up to date/time changed. New value: ${format(fetchUpToDate, "yyyy-MM-dd")} ${currentHour}:${currentMinute}`, "Debug");
     }
   }, [fetchUpToDate, fetchUpToHour, fetchUpToMinute, updateFetchUpToDateTime]);
@@ -159,51 +157,57 @@ export default function SecureLinkPage() {
     }
     
     setIsLoading(true);
-    setDebugOutput("Attempting to connect (simulated)...");
+    setDebugOutput("Attempting to connect (simulated via Electron IPC)...");
     setIsConnected(false);
-    addLog("SecureLinkPage", `Attempting simulated connection to ${mdbFileName}.`, "Info");
+    addLog("SecureLinkPage", `Attempting connection to ${mdbFileName} (simulated).`, "Info");
 
-    // TODO: [Electron Main Process] Implement actual MDB connection and test query via IPC.
-    // Example: const result = await window.electronAPI.testSecureLinkConnection({ filePath: mdbFile?.path, password });
+    // TODO: [Electron Main Process] Implement actual MDB connection via IPC.
+    // const result = await window.electronAPI.testSecureLinkConnection({ filePath: mdbFile?.path, password });
     // For now, simulate:
     await new Promise(resolve => setTimeout(resolve, 1500 + Math.random() * 500));
 
-    if (password === "Timmy") { // Simple simulation based on password
-      // In a real scenario, this data would come from the MDB file via Electron main process.
+    // Example of how data might be returned from Electron main process.
+    // This would involve querying 'tmpTRecords' and 'Employee' tables.
+    const simulatedSuccess = password === "Timmy"; // Simple simulation
+    if (simulatedSuccess) {
       const simulatedData = [ 
         { UserID: 101, RecordDate: "2024-07-01T08:00:00Z", RecordType: "I", DeviceID: "SimDevice1" },
         { UserID: 102, RecordDate: "2024-07-01T08:05:00Z", RecordType: "I", DeviceID: "SimDevice2" }
       ];
-      setDebugOutput(`Connection successful (simulated).\n\n--- Mock tmpTRecords Data ---\n${JSON.stringify(simulatedData, null, 2)}`);
+      setDebugOutput(`Connection successful (simulated).\n\n--- Mock 'tmpTRecords' Data (from Electron main process) ---\n${JSON.stringify(simulatedData, null, 2)}`);
       setIsConnected(true);
       toast({
         title: "Connection Successful (Simulated)",
-        description: `Successfully connected to ${mdbFileName}. Displaying mock 'tmpTRecords' data.`,
+        description: `Successfully connected to ${mdbFileName}. Mock data displayed.`,
       });
       addLog("SecureLinkPage", `Simulated connection to ${mdbFileName} successful.`, "Success");
     } else {
-      const errorMessage = "Error: Invalid password or unable to open database (Simulated).";
+      const errorMessage = "Error: Invalid password or unable to open database (Simulated via Electron IPC).";
       setDebugOutput(errorMessage);
       setIsConnected(false);
       toast({
         title: "Connection Failed (Simulated)",
-        description: "Invalid password or unable to open the MDB file. Please check credentials and file path.",
+        description: "Invalid password or MDB file issue. Check credentials/file.",
         variant: "destructive",
       });
-      addLog("SecureLinkPage", `Simulated connection to ${mdbFileName} failed. Password used: '${password.substring(0,1)}***'`, "Error");
+      addLog("SecureLinkPage", `Simulated connection to ${mdbFileName} failed.`, "Error");
     }
     setIsLoading(false);
   };
   
-  // Placeholder for manual fetch. Actual implementation requires Electron main process.
+  /**
+   * Placeholder for manual/scheduled data fetch.
+   * In Electron, this would trigger an IPC call to the main process.
+   * @param {boolean} isScheduled - Indicates if the fetch was triggered by a scheduler.
+   */
   const handleManualFetch = async (isScheduled: boolean = false) => {
     if (!isConnected && !mdbFileName) { 
-        toast({ title: "Not Connected/No File", description: "Please test the MDB connection first or ensure an MDB file is selected.", variant: "destructive"});
+        toast({ title: "Not Connected/No File", description: "Please test connection or select MDB file.", variant: "destructive"});
         addLog("SecureLinkPage", "Manual fetch attempted without active connection or MDB file.", "Error");
         return;
     }
     if (isFetchingNow) {
-        toast({ title: "Fetch In Progress", description: "A data fetch operation is already running.", variant: "default"});
+        toast({ title: "Fetch In Progress", description: "Data fetch is already running.", variant: "default"});
         return;
     }
 
@@ -212,20 +216,28 @@ export default function SecureLinkPage() {
     const fetchUpToISO = localStorage.getItem("securelink_fetchUpToDateTime") || new Date().toISOString();
     const fetchUpToFormatted = format(parseISO(fetchUpToISO), "Pp");
 
-    addLog("SecureLinkPage", `Initiating ${fetchType} data fetch from AAS (simulated). Fetch up to: ${fetchUpToFormatted}`, "Info");
-    setDebugOutput(prev => `${prev}\n\nInitiating ${fetchType} fetch (simulated) up to ${fetchUpToFormatted}.
-    This would involve:
-    1. Connecting to ${mdbFileName} (actual path via Electron IPC).
+    const logMessage = `Initiating ${fetchType} data fetch from AAS (simulated via Electron IPC). Fetch up to: ${fetchUpToFormatted}`;
+    addLog("SecureLinkPage", logMessage, "Info");
+    setDebugOutput(prev => `${prev}\n\n${logMessage}
+    This involves:
+    1. Connecting to ${mdbFileName} (via Electron main process).
     2. Querying 'tmpTRecords' and 'Employee' tables for records where RecordDate <= ${fetchUpToFormatted}.
     3. Transforming data (e.g., UserID to Employee String ID, RecordType to 'check-in'/'check-out').
     4. Calling addAttendanceTransaction() for each valid new record.
-    5. Updating 'securelink_lastFetchedTimestamp' to now.
-    6. Updating 'securelink_fetchUpToDateTime' to the timestamp of the latest record successfully processed.
-    (Actual implementation requires Electron IPC for file access and database operations)`);
+    5. Updating 'securelink_lastFetchedTimestamp' and 'securelink_fetchUpToDateTime'.
+    (Actual implementation requires Electron IPC for all file/DB operations)`);
     
-    // TODO: [Electron Main Process] Implement actual data fetching logic using IPC.
-    // Example: const result = await window.electronAPI.fetchSecureLinkData({ filePath: mdbFile?.path, password, fetchUpTo: fetchUpToISO });
-    await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 1000)); // Simulate fetch time
+    // TODO: [Electron Main Process] Implement actual data fetching logic via IPC.
+    // const result = await window.electronAPI.fetchSecureLinkData({ filePath: mdbFile?.path, password, fetchUpTo: fetchUpToISO });
+    // The main process would then:
+    // - Connect to MDB using 'node-adodb' or similar.
+    // - Query 'tmpTRecords' (and potentially 'Employee' table for string IDs).
+    // - Filter records based on `fetchUpToISO`.
+    // - Transform data: map UserID to Employee String ID, RecordType to 'check-in'/'check-out'.
+    // - For each valid new record, call `addAttendanceTransaction()` (this might mean sending data back to renderer or main process handles it if SQLite is in main).
+    // - Update 'securelink_lastFetchedTimestamp' (in main process storage or send back to renderer).
+    // - Update 'securelink_fetchUpToDateTime' to the timestamp of the latest record processed.
+    await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 1000)); 
 
     const success = Math.random() > 0.2; 
     if (success) {
@@ -236,12 +248,11 @@ export default function SecureLinkPage() {
       
       const newLastFetchedTimestamp = new Date().toISOString();
       localStorage.setItem("securelink_lastFetchedTimestamp", newLastFetchedTimestamp);
-      // Simulate updating fetchUpToDate to the latest record processed
-      const newFetchUpToDate = new Date(parseISO(fetchUpToISO).getTime() + fetchedCount * 60000 * 5); // Advance a bit
-      setFetchUpToDate(newFetchUpToDate); // UI update
+      const newFetchUpToDate = new Date(parseISO(fetchUpToISO).getTime() + fetchedCount * 60000 * 5); 
+      setFetchUpToDate(newFetchUpToDate); 
       setFetchUpToHour(format(newFetchUpToDate, "HH"));
       setFetchUpToMinute(format(newFetchUpToDate, "mm"));
-      localStorage.setItem("securelink_fetchUpToDateTime", newFetchUpToDate.toISOString()); // Persist
+      localStorage.setItem("securelink_fetchUpToDateTime", newFetchUpToDate.toISOString()); 
       addLog("SecureLinkPage", `Simulated: Updated 'fetchUpToDateTime' to ${newFetchUpToDate.toISOString()} and 'lastFetchedTimestamp' to ${newLastFetchedTimestamp}`, "Debug");
 
     } else {
@@ -252,14 +263,18 @@ export default function SecureLinkPage() {
     setIsFetchingNow(false);
   };
 
-  // TODO: [Electron Main Process] Implement a scheduler (e.g., using node-cron or setInterval in main.js)
-  // that calls this function periodically based on `fetchFrequency` and `lastFetchedTimestamp`.
+  /**
+   * Placeholder for initiating scheduled fetch.
+   * TODO: [Electron Main Process] Implement a scheduler (e.g., using node-cron or setInterval in main.js)
+   * that calls this function's logic periodically based on `fetchFrequency` and `lastFetchedTimestamp`.
+   * The main process would manage these checks and trigger `handleManualFetch(true)` or its equivalent.
+   */
   const initiateScheduledFetch = React.useCallback(async () => {
-    addLog("SecureLinkPage", "Placeholder: initiateScheduledFetch called. This should be managed by Electron main process.", "Debug");
-    // 1. Get `securelink_lastFetchedTimestamp` from localStorage.
-    // 2. Get `securelink_fetchFrequency`.
-    // 3. If current time is past `lastFetchedTimestamp` + `fetchFrequency`, call `handleManualFetch(true)`.
-  }, []); // Dependencies would include actual state if this were run in component.
+    addLog("SecureLinkPage", "Placeholder: initiateScheduledFetch called. This logic should be managed by Electron main process.", "Debug");
+    // const lastFetched = localStorage.getItem("securelink_lastFetchedTimestamp");
+    // const frequency = localStorage.getItem("securelink_fetchFrequency");
+    // If (currentTime > lastFetched + frequency) then call handleManualFetch(true) or main process equivalent.
+  }, []);
 
   const canTestConnection = Boolean(mdbFileName && password && !isLoading);
 
@@ -271,7 +286,7 @@ export default function SecureLinkPage() {
             <Link2 className="h-8 w-8 text-primary" />
             <CardTitle className="font-headline text-2xl">SecureLink AAS Configuration</CardTitle>
           </div>
-          <CardDescription>Configure and test connection to the SecureLink (AAS) biometric MDB database. File path and password (excluding actual password value) are stored locally.</CardDescription>
+          <CardDescription>Configure and test connection to the SecureLink (AAS) biometric MDB database. File path and password (excluding actual value) are stored locally (Warning: Insecure without Electron safeStorage).</CardDescription>
         </CardHeader>
         <CardContent className="pt-6 space-y-6">
           {isConnected && (
@@ -311,11 +326,11 @@ export default function SecureLinkPage() {
               disabled={isLoading || isFetchingNow}
             />
             <p className="text-xs text-muted-foreground">
-              Select the AAS database (e.g., TMKQ.mdb). Usually located in Program Files.
+              Select the AAS database (e.g., TMKQ.mdb). File path is used by Electron's main process.
             </p>
             {mdbFileName && !mdbFile && (
               <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-1">
-                Previously selected: {mdbFileName}. Re-select if path changed or for initial connection.
+                Previously selected: {mdbFileName}. Re-select if path changed.
               </p>
             )}
           </div>
@@ -335,7 +350,7 @@ export default function SecureLinkPage() {
               autoComplete="current-password"
             />
             <p className="text-xs text-muted-foreground">
-              Used to access AAS database. Password is stored locally (WARNING: Insecure for production without Electron's safeStorage).
+              Used to access AAS database. Password will be handled by Electron's main process using `safeStorage`.
             </p>
           </div>
 
@@ -354,7 +369,7 @@ export default function SecureLinkPage() {
               <Label htmlFor="debug-output" className="font-medium">Debug Output / Connection Status</Label>
               <Textarea
                 id="debug-output"
-                value={isLoading ? "Connecting and fetching data (simulated)..." : (isFetchingNow ? `${debugOutput}\nFetching now (simulated)...` : debugOutput)}
+                value={isLoading ? "Connecting (simulated via Electron IPC)..." : (isFetchingNow ? `${debugOutput}\nFetching now (simulated via Electron IPC)...` : debugOutput)}
                 readOnly
                 rows={10}
                 className="font-mono text-xs bg-muted/30 dark:bg-muted/50 border rounded-md p-2 h-48"
@@ -371,7 +386,7 @@ export default function SecureLinkPage() {
             <Settings2 className="h-8 w-8 text-primary" />
             <CardTitle className="font-headline text-2xl">Synchronization Settings</CardTitle>
           </div>
-          <CardDescription>Configure how and when attendance data is fetched from SecureLink AAS. Requires a successful connection test first.</CardDescription>
+          <CardDescription>Configure how and when attendance data is fetched from SecureLink AAS. Requires successful connection.</CardDescription>
         </CardHeader>
         <CardContent className="pt-6 space-y-6">
           <div className="space-y-2">
@@ -452,19 +467,17 @@ export default function SecureLinkPage() {
                 </div>
             </div>
             <p className="text-xs text-muted-foreground">
-              Specify the latest date and time for which attendance transactions should be fetched. This is typically updated automatically after each successful fetch.
+              Specify the latest date and time for which attendance transactions should be fetched. This is typically updated automatically after each successful fetch by the main process.
             </p>
           </div>
         </CardContent>
         <CardFooter className="border-t pt-6">
             <Button onClick={() => handleManualFetch(false)} disabled={isFetchingNow || isLoading || (!isConnected && !mdbFileName) }>
                 {isFetchingNow && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                <RefreshCw className="mr-2 h-4 w-4" /> Fetch Now
+                <RefreshCw className="mr-2 h-4 w-4" /> Fetch Now (Simulated)
             </Button>
         </CardFooter>
       </Card>
     </div>
   );
 }
-    
-```
