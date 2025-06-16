@@ -136,6 +136,8 @@ export default function LogsPage() {
     if (!settingsInitialized) return;
     localStorage.setItem("logRetentionPeriod", logRetentionPeriod);
     applyRetentionPolicy(logRetentionPeriod);
+    // This also indirectly triggers a log reload if applyRetentionPolicy modifies logs,
+    // which it currently doesn't directly but would in a full implementation.
   }, [logRetentionPeriod, settingsInitialized]);
 
   React.useEffect(() => {
@@ -187,7 +189,7 @@ export default function LogsPage() {
   };
 
   const handleClearAllLogs = () => {
-    clearLogs();
+    clearLogs(); // This will trigger the 'logsUpdated' event
     toast({
       title: "Logs Cleared",
       description: "All activity logs have been deleted.",
@@ -253,7 +255,7 @@ export default function LogsPage() {
               </SelectContent>
             </Select>
              <p className="text-xs text-muted-foreground">
-              Logs older than this will be periodically deleted. (Requires main process implementation for robust deletion).
+              Logs older than this will be periodically evaluated for deletion. (Requires robust main process implementation for actual deletion).
             </p>
           </div>
 
@@ -307,14 +309,14 @@ export default function LogsPage() {
             </Select>
           </div>
           
-          <div className="flex items-end">
+          <div className="flex items-end md:col-start-1 lg:col-start-auto"> {/* Adjust column start for medium and large screens if needed or let it flow */}
               <Button onClick={handleResetFilters} variant="outline" className="w-full">
                   <FilterX className="mr-2 h-4 w-4" /> Reset Filters
               </Button>
           </div>
 
         </CardContent>
-         <CardFooter className="border-t pt-6 flex justify-between items-center">
+         <CardFooter className="border-t pt-6 flex justify-start items-center"> {/* Changed justify-between to justify-start */}
           <AlertDialog open={isClearLogsDialogOpen} onOpenChange={setIsClearLogsDialogOpen}>
             <AlertDialogTrigger asChild>
               <Button variant="destructive">
@@ -330,7 +332,7 @@ export default function LogsPage() {
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogCancel onClick={() => addLog("LogsPage", "Delete all logs cancelled by user.", "Debug")}>Cancel</AlertDialogCancel>
                 <AlertDialogAction onClick={handleClearAllLogs} className="bg-destructive hover:bg-destructive/90">
                   Yes, delete all logs
                 </AlertDialogAction>
@@ -463,3 +465,4 @@ export default function LogsPage() {
     </div>
   );
 }
+
