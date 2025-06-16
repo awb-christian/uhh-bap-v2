@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Basic validation for targetUrl to prevent open proxy vulnerabilities.
-    // TODO: Enhance this validation for production if needed (e.g., allowlist specific Odoo domains).
+    // TODO: [Electron Main Process] Enhance this validation for production if needed (e.g., allowlist specific Odoo domains).
     if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
         return NextResponse.json({ error: 'Invalid targetUrl format. Must start with http:// or https://' }, { status: 400 });
     }
@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
       method: 'POST',
       headers: forwardedHeaders,
       body: JSON.stringify(payload),
-      // TODO: Consider adding a configurable timeout (e.g., 15-30 seconds)
+      // TODO: [Electron Main Process] Consider adding a configurable timeout (e.g., 15-30 seconds)
       // signal: AbortSignal.timeout(15000) 
     });
 
@@ -62,10 +62,13 @@ export async function POST(request: NextRequest) {
         if (typeof responseData === 'object' && responseData !== null) {
             responseData.debug_headers = odooResponseHeaders;
         } else {
+            // If responseData is not an object (e.g. just `true` or a number), wrap it
             responseData = { original_response: responseData, debug_headers: odooResponseHeaders };
         }
     } else {
         const textResponse = await odooResponse.text();
+        // Log this unexpected response format
+        console.error(`UHH Proxy: Odoo server responded with non-JSON content. Status: ${odooResponse.status} ${odooResponse.statusText}. Content-Type: ${contentType}. Response snippet: ${textResponse.substring(0, 500)}`);
         return NextResponse.json(
             { 
                 error: `Odoo server responded with non-JSON content. Status: ${odooResponse.status} ${odooResponse.statusText}.`,
@@ -91,7 +94,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('UHH Proxy API error:', error);
     let errorMessage = 'Proxy error occurred during request to Odoo.';
-    let errorDetails = ""; // Keep details minimal for client unless debugging
+    // let errorDetails = ""; // Keep details minimal for client unless debugging
 
     if (error instanceof Error) {
         errorMessage = error.message; // General error message
@@ -115,5 +118,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-
-```
