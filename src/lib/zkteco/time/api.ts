@@ -21,9 +21,7 @@ interface ZKTecoResponse {
  * @param endDate Optional end date to filter attendance records.
  */
 export async function fetchZkTimeDeviceData(startDate?: Date, endDate?: Date): Promise<ZKTecoResponse> {
-  console.log(`[ZKTeco Time] Simulating fetch from device: ${ZKTIME_DEVICE_IP}:${ZKTIME_DEVICE_PORT}`);
-  if (startDate) console.log(`  Start Date: ${startDate.toISOString()}`);
-  if (endDate) console.log(`  End Date: ${endDate.toISOString()}`);
+  
   
   // Simulate network delay / SDK communication time
   await new Promise(resolve => setTimeout(resolve, 400 + Math.random() * 600));
@@ -59,7 +57,6 @@ export async function fetchZkTimeDeviceData(startDate?: Date, endDate?: Date): P
  * @param rawData The raw data array from the ZKTeco SDK.
  */
 function processZkTimeData(rawData: any[]): any[] {
-  console.log('[ZKTeco Time] Processing raw SDK data...');
   return rawData.map(record => ({
     employeeId: String(record.userId), // Standardize field name
     checkTime: new Date(record.timestamp).toISOString(),

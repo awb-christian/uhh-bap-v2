@@ -23,9 +23,7 @@ interface ZKTecoResponse {
  */
 export async function fetchBiotimeData(startDate?: Date, endDate?: Date): Promise<ZKTecoResponse> {
   const targetUrl = `http://${BIOTIME_IP}:${BIOTIME_PORT}/api/attendance`; // Example API endpoint
-  console.log(`[ZKTeco Biotime] Simulating fetch from: ${targetUrl}`);
-  if (startDate) console.log(`  Start Date: ${startDate.toISOString()}`);
-  if (endDate) console.log(`  End Date: ${endDate.toISOString()}`);
+  
 
   // Simulate network delay
   await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 400));
@@ -62,7 +60,6 @@ export async function fetchBiotimeData(startDate?: Date, endDate?: Date): Promis
  */
 function processBiotimeData(rawData: any[]): any[] {
   // Example processing: ensure all timestamps are ISO strings, map field names, etc.
-  console.log('[ZKTeco Biotime] Processing raw data...');
   return rawData.map(record => ({
     ...record,
     checkTime: new Date(record.checkTime).toISOString(), // Ensure ISO format

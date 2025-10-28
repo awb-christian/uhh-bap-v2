@@ -83,9 +83,6 @@ export function updateAttendanceTransactionStatus(transactionIds: string[], newS
     if (updatedCount > 0) {
       localStorage.setItem(TRANSACTIONS_STORAGE_KEY, JSON.stringify(currentTransactions));
       window.dispatchEvent(new CustomEvent('attendanceTransactionsUpdated'));
-      console.log(`AttendanceManager: Updated status to '${newStatus}' for ${updatedCount} transactions.`);
-    } else {
-      console.log(`AttendanceManager: No transactions found with IDs: ${transactionIds.join(', ')} to update status.`);
     }
   } catch (error) {
     console.error("AttendanceManager: Error updating transaction statuses in localStorage:", error);
@@ -114,7 +111,6 @@ export function seedSampleTransactions(): void {
   if (typeof window === 'undefined') return;
   const existingTransactions = getAttendanceTransactions();
   if (existingTransactions.length > 0) {
-    console.log("AttendanceManager: Sample data seeding skipped: Transactions already exist.");
     return; 
   }
 
@@ -144,7 +140,6 @@ export function seedSampleTransactions(): void {
   try {
     localStorage.setItem(TRANSACTIONS_STORAGE_KEY, JSON.stringify(allSamplesToSeed.slice(0, MAX_TRANSACTIONS_IN_STORAGE)));
     window.dispatchEvent(new CustomEvent('attendanceTransactionsUpdated'));
-    console.log(`AttendanceManager: Seeded ${allSamplesToSeed.length} sample transactions.`);
   } catch (error) {
     console.error("AttendanceManager: Error seeding sample transactions:", error);
   }
