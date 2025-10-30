@@ -24,12 +24,7 @@ export async function odooRequest(
   args: any[] = [],
   kwargs: Record<string, any> = {}
 ): Promise<OdooResponse> {
-  console.log(`[Odoo API Request] Simulating call:
-  Model: ${model}
-  Method: ${method}
-  Args: ${JSON.stringify(args)}
-  Kwargs: ${JSON.stringify(kwargs)}
-  Target: https://${ODOO_URL} (DB: ${ODOO_DB})`);
+  
 
   // Simulate network delay
   await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 500));
@@ -65,8 +60,7 @@ export async function pushAttendance(attendanceData: any[]): Promise<OdooRespons
   if (!Array.isArray(attendanceData) || attendanceData.length === 0) {
     return { success: false, error: 'No attendance data provided.' };
   }
-
-  console.log(`[Odoo API] Attempting to push ${attendanceData.length} attendance records.`);
+  
   
   try {
     // In a real scenario, you might batch requests or handle them individually.
